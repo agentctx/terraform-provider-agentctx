@@ -1,4 +1,4 @@
-# Terraform Provider AgentCtx
+# Terraform Provider agentctx
 
 Deploy AI skill bundles to cloud storage with versioning, drift detection, and optional [Anthropic](https://www.anthropic.com/) registry integration.
 
