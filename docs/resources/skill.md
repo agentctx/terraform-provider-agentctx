@@ -26,8 +26,8 @@ resource "agentctx_skill" "my_skill" {
 ### With Explicit Targets and Exclusions
 
 ```hcl
-resource "agentctx_skill" "pipeline_ner" {
-  source_dir = "./skills/pipeline-ner"
+resource "agentctx_skill" "example" {
+  source_dir = "./skills/my-skill"
 
   targets = ["shared_s3"]
 

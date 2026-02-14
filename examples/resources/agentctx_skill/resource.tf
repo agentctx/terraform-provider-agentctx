@@ -1,5 +1,5 @@
-resource "agentctx_skill" "pipeline_ner" {
-  source_dir = "./skills/pipeline-ner"
+resource "agentctx_skill" "example" {
+  source_dir = "./skills/my-skill"
 
   targets = ["shared_s3"]
 
@@ -11,7 +11,7 @@ resource "agentctx_skill" "pipeline_ner" {
   anthropic {
     enabled       = true
     register      = true
-    display_title = "Biopharma Pipeline NER"
+    display_title = "My Example Skill"
     auto_version  = true
   }
 
@@ -21,9 +21,9 @@ resource "agentctx_skill" "pipeline_ner" {
 }
 
 output "skill_name" {
-  value = agentctx_skill.pipeline_ner.skill_name
+  value = agentctx_skill.example.skill_name
 }
 
 output "source_hash" {
-  value = agentctx_skill.pipeline_ner.source_hash
+  value = agentctx_skill.example.source_hash
 }
