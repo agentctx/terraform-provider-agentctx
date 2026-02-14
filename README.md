@@ -32,13 +32,13 @@ provider "agentctx" {
 }
 
 # Deploy a skill from a local directory
-resource "agentctx_skill" "assistant" {
-  source_dir = "./skills/assistant"
+resource "agentctx_skill" "sec_filings" {
+  source_dir = "./skills/analyzing-sec-filings"
 
   anthropic {
     enabled       = true
     register      = true
-    display_title = "Customer Assistant"
+    display_title = "Analyzing SEC Filings"
     auto_version  = true
   }
 }
@@ -49,7 +49,10 @@ terraform init
 terraform apply
 ```
 
-That's it. Your skill is deployed to S3 and registered with Anthropic.
+This will:
+1. Bundle `./skills/analyzing-sec-filings` and deploy it to S3
+2. Register the skill in Anthropic's registry as **"Analyzing SEC Filings"**
+3. Create a new version automatically whenever the skill content changes
 
 ## Examples
 
@@ -81,8 +84,8 @@ provider "agentctx" {
 }
 
 # Deploys to aws + gcs (default_targets)
-resource "agentctx_skill" "assistant" {
-  source_dir = "./skills/assistant"
+resource "agentctx_skill" "sec_filings" {
+  source_dir = "./skills/analyzing-sec-filings"
 }
 
 # Deploys to all three targets
@@ -96,12 +99,12 @@ resource "agentctx_skill" "classifier" {
 
 ```hcl
 resource "agentctx_skill_version" "v3" {
-  skill_id   = agentctx_skill.assistant.registry_state.skill_id
-  source_dir = "./skills/assistant-v3"
+  skill_id   = agentctx_skill.sec_filings.registry_state.skill_id
+  source_dir = "./skills/sec-filings-v3"
 }
 
-resource "agentctx_skill" "assistant" {
-  source_dir = "./skills/assistant"
+resource "agentctx_skill" "sec_filings" {
+  source_dir = "./skills/analyzing-sec-filings"
 
   anthropic {
     enabled          = true
