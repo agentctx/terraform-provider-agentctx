@@ -14,6 +14,7 @@ import (
 	"github.com/agentctx/terraform-provider-agentctx/internal/anthropic"
 	skillresource "github.com/agentctx/terraform-provider-agentctx/internal/resource/skill"
 	skillversion "github.com/agentctx/terraform-provider-agentctx/internal/resource/skill_version"
+	subagentresource "github.com/agentctx/terraform-provider-agentctx/internal/resource/subagent"
 	"github.com/agentctx/terraform-provider-agentctx/internal/target"
 )
 
@@ -364,6 +365,7 @@ func (p *AgentCtxProvider) Resources(_ context.Context) []func() resource.Resour
 	return []func() resource.Resource{
 		skillresource.NewSkillResource,
 		skillversion.NewSkillVersionResource,
+		subagentresource.NewSubagentResource,
 	}
 }
 
