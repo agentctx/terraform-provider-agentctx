@@ -3,6 +3,7 @@ package provider_test
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 
@@ -284,6 +285,192 @@ resource "agentctx_subagent" "test" {
 					resource.TestMatchResourceAttr("agentctx_subagent.test", "content", regexp.MustCompile(`(?m)^description: Test agent$`)),
 					resource.TestMatchResourceAttr("agentctx_subagent.test", "content", regexp.MustCompile(`(?m)^model: sonnet$`)),
 					resource.TestMatchResourceAttr("agentctx_subagent.test", "content", regexp.MustCompile(`(?m)^tools: Read, Grep$`)),
+				),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_InvalidName(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "Invalid_Name"
+  description = "Should fail"
+  output_dir  = %q
+  prompt      = "test"
+}
+`, outputDir),
+				ExpectError: regexp.MustCompile(`must contain only lowercase letters`),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_InvalidModel(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "test-agent"
+  description = "Should fail"
+  output_dir  = %q
+  prompt      = "test"
+  model       = "gpt4"
+}
+`, outputDir),
+				ExpectError: regexp.MustCompile(`value must be one of`),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_InvalidPermissionMode(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name             = "test-agent"
+  description      = "Should fail"
+  output_dir       = %q
+  prompt           = "test"
+  permission_mode  = "invalid"
+}
+`, outputDir),
+				ExpectError: regexp.MustCompile(`value must be one of`),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_InvalidMemory(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "test-agent"
+  description = "Should fail"
+  output_dir  = %q
+  prompt      = "test"
+  memory      = "global"
+}
+`, outputDir),
+				ExpectError: regexp.MustCompile(`value must be one of`),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_VerifyFileOnDisk(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "disk-test"
+  description = "Verify file on disk"
+  output_dir  = %q
+  prompt      = "You are a test agent."
+  model       = "haiku"
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Verify the file actually exists on disk
+					func(s *terraform.State) error {
+						fp := filepath.Join(outputDir, "disk-test.md")
+						data, err := os.ReadFile(fp)
+						if err != nil {
+							return fmt.Errorf("failed to read file on disk: %w", err)
+						}
+						content := string(data)
+						if !regexp.MustCompile(`^---\n`).MatchString(content) {
+							return fmt.Errorf("file on disk should start with YAML frontmatter")
+						}
+						if !regexp.MustCompile(`name: disk-test`).MatchString(content) {
+							return fmt.Errorf("file on disk should contain 'name: disk-test'")
+						}
+						if !regexp.MustCompile(`model: haiku`).MatchString(content) {
+							return fmt.Errorf("file on disk should contain 'model: haiku'")
+						}
+						if !regexp.MustCompile(`You are a test agent\.`).MatchString(content) {
+							return fmt.Errorf("file on disk should contain the prompt")
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestAccSubagent_NameRequiresReplace(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "original-name"
+  description = "Test"
+  output_dir  = %q
+  prompt      = "Test prompt."
+}
+`, outputDir),
+				Check: resource.TestCheckResourceAttr("agentctx_subagent.test", "name", "original-name"),
+			},
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "new-name"
+  description = "Test"
+  output_dir  = %q
+  prompt      = "Test prompt."
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("agentctx_subagent.test", "name", "new-name"),
+					// Old file should be cleaned up, new file should exist
+					func(s *terraform.State) error {
+						newFile := filepath.Join(outputDir, "new-name.md")
+						if _, err := os.Stat(newFile); os.IsNotExist(err) {
+							return fmt.Errorf("new file should exist at %s", newFile)
+						}
+						return nil
+					},
 				),
 			},
 		},

@@ -6,17 +6,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"gopkg.in/yaml.v3"
 )
+
+// namePattern validates sub-agent names: lowercase letters, numbers, and
+// hyphens, starting and ending with a letter or number.
+var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Compile-time interface checks.
 var (
@@ -53,10 +62,16 @@ func (r *SubagentResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			// ---- Required ----
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Unique identifier for the sub-agent. Must use lowercase letters and hyphens (e.g. `code-reviewer`).",
+				MarkdownDescription: "Unique identifier for the sub-agent. Must use lowercase letters, numbers, and hyphens (e.g. `code-reviewer`).",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						namePattern,
+						"must contain only lowercase letters, numbers, and hyphens, and must start and end with a letter or number",
+					),
 				},
 			},
 			"description": schema.StringAttribute{
@@ -79,6 +94,9 @@ func (r *SubagentResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"model": schema.StringAttribute{
 				MarkdownDescription: "Model the sub-agent uses. Valid values: `sonnet`, `opus`, `haiku`, `inherit`. Defaults to `inherit` (same model as the main conversation).",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("sonnet", "opus", "haiku", "inherit"),
+				},
 			},
 			"tools": schema.ListAttribute{
 				MarkdownDescription: "Tools the sub-agent can use. Inherits all tools from the main conversation if omitted. Supports `Task(agent_type)` syntax for restricting spawnable sub-agents.",
@@ -93,10 +111,16 @@ func (r *SubagentResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"permission_mode": schema.StringAttribute{
 				MarkdownDescription: "Controls how the sub-agent handles permission prompts. Valid values: `default`, `acceptEdits`, `delegate`, `dontAsk`, `bypassPermissions`, `plan`.",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("default", "acceptEdits", "delegate", "dontAsk", "bypassPermissions", "plan"),
+				},
 			},
 			"max_turns": schema.Int64Attribute{
 				MarkdownDescription: "Maximum number of agentic turns before the sub-agent stops.",
 				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+				},
 			},
 			"skills": schema.ListAttribute{
 				MarkdownDescription: "Skills to preload into the sub-agent's context at startup. The full skill content is injected, not just made available for invocation.",
@@ -106,6 +130,9 @@ func (r *SubagentResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"memory": schema.StringAttribute{
 				MarkdownDescription: "Persistent memory scope for cross-session learning. Valid values: `user`, `project`, `local`.",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("user", "project", "local"),
+				},
 			},
 
 			// ---- Computed ----
@@ -165,6 +192,9 @@ func (r *SubagentResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"hooks": schema.ListNestedBlock{
 				MarkdownDescription: "Lifecycle hooks scoped to this sub-agent. At most one block may be specified.",
+				Validators: []validator.List{
+					listvalidator.SizeAtMost(1),
+				},
 				NestedObject: schema.NestedBlockObject{
 					Blocks: map[string]schema.Block{
 						"pre_tool_use":  hookMatcherBlockSchema("Hook matchers that run before the sub-agent uses a tool."),
