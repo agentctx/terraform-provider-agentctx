@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/agentctx/terraform-provider-agentctx/internal/anthropic"
+	pluginresource "github.com/agentctx/terraform-provider-agentctx/internal/resource/plugin"
 	skillresource "github.com/agentctx/terraform-provider-agentctx/internal/resource/skill"
 	skillversion "github.com/agentctx/terraform-provider-agentctx/internal/resource/skill_version"
 	subagentresource "github.com/agentctx/terraform-provider-agentctx/internal/resource/subagent"
@@ -363,6 +364,7 @@ func (p *AgentCtxProvider) Configure(ctx context.Context, req provider.Configure
 // Resources returns the set of resource types supported by this provider.
 func (p *AgentCtxProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		pluginresource.NewPluginResource,
 		skillresource.NewSkillResource,
 		skillversion.NewSkillVersionResource,
 		subagentresource.NewSubagentResource,
