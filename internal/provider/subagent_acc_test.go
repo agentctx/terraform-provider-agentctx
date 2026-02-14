@@ -386,6 +386,38 @@ resource "agentctx_subagent" "test" {
 	})
 }
 
+func TestAccSubagent_InvalidHookType(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := t.TempDir()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_subagent" "test" {
+  name        = "hook-type-test"
+  description = "Should fail"
+  output_dir  = %q
+  prompt      = "test"
+
+  hooks {
+    pre_tool_use {
+      hook {
+        type    = "script"
+        command = "./run.sh"
+      }
+    }
+  }
+}
+`, outputDir),
+				ExpectError: regexp.MustCompile(`value must be one of`),
+			},
+		},
+	})
+}
+
 func TestAccSubagent_VerifyFileOnDisk(t *testing.T) {
 	acctest.SetupTest(t)
 
