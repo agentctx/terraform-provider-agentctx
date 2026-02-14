@@ -1,18 +1,10 @@
-# Terraform Provider for AgentCtx
+# Terraform Provider AgentCtx
 
-- Terraform Registry: https://registry.terraform.io/providers/agentctx/agentctx/latest
-- Documentation: https://registry.terraform.io/providers/agentctx/agentctx/latest/docs
+Deploy AI skill bundles to cloud storage with versioning, drift detection, and optional [Anthropic](https://www.anthropic.com/) registry integration.
 
-## Overview
+> [Registry](https://registry.terraform.io/providers/agentctx/agentctx/latest) | [Documentation](https://registry.terraform.io/providers/agentctx/agentctx/latest/docs)
 
-The AgentCtx provider manages agent context skills and their versions across cloud storage targets, with optional Anthropic registry integration. It supports deploying skill bundles to **Amazon S3**, **Azure Blob Storage**, and **Google Cloud Storage**.
-
-## Requirements
-
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.24 (to build the provider plugin)
-
-## Usage
+## Quick Start
 
 ```hcl
 terraform {
@@ -24,71 +16,125 @@ terraform {
   }
 }
 
+# Configure a storage target and Anthropic integration
 provider "agentctx" {
+  anthropic {
+    api_key = var.anthropic_api_key
+  }
+
   target {
-    name   = "primary"
+    name   = "production"
     type   = "s3"
-    bucket = "my-skill-artifacts"
+    bucket = "my-ai-skills"
     region = "us-east-1"
+    prefix = "skills/"
   }
 }
 
-resource "agentctx_skill" "example" {
-  source_dir = "./skills/my-skill"
-  targets    = ["primary"]
+# Deploy a skill from a local directory
+resource "agentctx_skill" "assistant" {
+  source_dir = "./skills/assistant"
+
+  anthropic {
+    enabled       = true
+    register      = true
+    display_title = "Customer Assistant"
+    auto_version  = true
+  }
 }
 ```
 
-## Features
+```sh
+terraform init
+terraform apply
+```
 
-- **Multi-target deployment** -- deploy the same skill bundle to S3, Azure Blob Storage, and GCS simultaneously
-- **Deterministic hashing** -- SHA-256 content hashing ensures consistent, reproducible deployments
-- **Atomic deploys** -- conditional writes protect against concurrent modifications
-- **Drift detection** -- refresh operations detect and surface out-of-band changes
-- **Deployment pruning** -- automatic cleanup of old deployments with configurable retention
-- **Anthropic registry** -- optional skill registration and versioning through the Anthropic Skills API
+That's it. Your skill is deployed to S3 and registered with Anthropic.
 
-## Building the Provider
+## Examples
 
-Clone the repository:
+### Multi-cloud replication
+
+```hcl
+provider "agentctx" {
+  default_targets = ["aws", "gcs"]
+
+  target {
+    name   = "aws"
+    type   = "s3"
+    bucket = "skills-us-east"
+    region = "us-east-1"
+  }
+
+  target {
+    name   = "gcs"
+    type   = "gcs"
+    bucket = "skills-eu-west"
+  }
+
+  target {
+    name             = "azure"
+    type             = "azure"
+    storage_account  = "myskillstore"
+    container_name   = "skills"
+  }
+}
+
+# Deploys to aws + gcs (default_targets)
+resource "agentctx_skill" "assistant" {
+  source_dir = "./skills/assistant"
+}
+
+# Deploys to all three targets
+resource "agentctx_skill" "classifier" {
+  source_dir = "./skills/classifier"
+  targets    = ["aws", "gcs", "azure"]
+}
+```
+
+### Pinned version promotion
+
+```hcl
+resource "agentctx_skill_version" "v3" {
+  skill_id   = agentctx_skill.assistant.registry_state.skill_id
+  source_dir = "./skills/assistant-v3"
+}
+
+resource "agentctx_skill" "assistant" {
+  source_dir = "./skills/assistant"
+
+  anthropic {
+    enabled          = true
+    version_strategy = "pinned"
+    pinned_version   = agentctx_skill_version.v3.version
+  }
+}
+```
+
+## Supported Targets
+
+| Target | Auth | Config |
+|--------|------|--------|
+| **Amazon S3** | AWS default credential chain | `bucket`, `region`, `kms_key_id` |
+| **Google Cloud Storage** | Application Default Credentials | `bucket`, `kms_key_name` |
+| **Azure Blob Storage** | `DefaultAzureCredential` | `storage_account`, `container_name`, `encryption_scope` |
+
+## Requirements
+
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
+
+## Building from Source
 
 ```sh
 git clone https://github.com/agentctx/terraform-provider-agentctx.git
 cd terraform-provider-agentctx
-```
-
-Build and install locally:
-
-```sh
 make install
 ```
 
 ## Development
 
-### Running Tests
-
 ```sh
-make test
+make test          # unit tests
+make testacc       # acceptance tests (requires cloud credentials)
+make lint          # vet + fmt
 ```
-
-### Running Acceptance Tests
-
-Acceptance tests require valid cloud credentials for the configured targets.
-
-```sh
-make testacc
-```
-
-### Linting
-
-```sh
-make lint
-```
-
-## Documentation
-
-Full documentation is available on the [Terraform Registry](https://registry.terraform.io/providers/agentctx/agentctx/latest/docs).
-
-## License
-
-See [LICENSE](LICENSE) for details.
