@@ -562,6 +562,70 @@ resource "agentctx_plugin" "test" {
 	})
 }
 
+func TestAccPlugin_RemovesDeletedFileBlocksOnUpdate(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "cleanup-files-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "cleanup-files-plugin"
+  output_dir = %q
+
+  file {
+    path    = "scripts/old.sh"
+    content = "echo old"
+  }
+
+  file {
+    path    = "scripts/keep.sh"
+    content = "echo keep"
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(s *terraform.State) error {
+						for _, f := range []string{"scripts/old.sh", "scripts/keep.sh"} {
+							if _, err := os.Stat(filepath.Join(outputDir, f)); os.IsNotExist(err) {
+								return fmt.Errorf("expected file to exist before update: %s", f)
+							}
+						}
+						return nil
+					},
+				),
+			},
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "cleanup-files-plugin"
+  output_dir = %q
+
+  file {
+    path    = "scripts/keep.sh"
+    content = "echo keep"
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(s *terraform.State) error {
+						if _, err := os.Stat(filepath.Join(outputDir, "scripts", "keep.sh")); err != nil {
+							return fmt.Errorf("expected keep file to remain: %w", err)
+						}
+						if _, err := os.Stat(filepath.Join(outputDir, "scripts", "old.sh")); !os.IsNotExist(err) {
+							return fmt.Errorf("expected removed file to be deleted, got err=%v", err)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
 func TestAccPlugin_FullFeatured(t *testing.T) {
 	acctest.SetupTest(t)
 

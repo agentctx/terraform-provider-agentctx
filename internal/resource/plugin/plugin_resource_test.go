@@ -1282,6 +1282,43 @@ func TestWritePlugin_CleansRemovedRuntimeConfigsOnRewrite(t *testing.T) {
 	}
 }
 
+func TestCleanupRemovedExtraFiles_RemovesOnlyDeletedPaths(t *testing.T) {
+	root := t.TempDir()
+	outputDir := filepath.Join(root, "plugin")
+
+	keepPath := filepath.Join(outputDir, "scripts", "keep.sh")
+	oldPath := filepath.Join(outputDir, "scripts", "old.sh")
+	if err := os.MkdirAll(filepath.Dir(keepPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keepPath, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prev := []PluginFileModel{
+		{Path: stringValue("scripts/keep.sh")},
+		{Path: stringValue("scripts/old.sh")},
+	}
+	next := []PluginFileModel{
+		{Path: stringValue("scripts/keep.sh")},
+	}
+
+	diags := cleanupRemovedExtraFiles(outputDir, prev, next)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors: %v", diags.Errors())
+	}
+
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("expected keep file to remain: %v", err)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatalf("expected removed file to be deleted, got err=%v", err)
+	}
+}
+
 // --------------------------------------------------------------------------
 // Mutual exclusion validation tests
 // --------------------------------------------------------------------------

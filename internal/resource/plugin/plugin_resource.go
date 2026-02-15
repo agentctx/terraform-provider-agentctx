@@ -505,8 +505,19 @@ func (r *PluginResource) Read(ctx context.Context, req resource.ReadRequest, res
 // --------------------------------------------------------------------------
 
 func (r *PluginResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var state PluginResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	var plan PluginResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(cleanupRemovedExtraFiles(plan.OutputDir.ValueString(), state.Files, plan.Files)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1280,6 +1291,73 @@ func cleanupManagedArtifacts(root string) error {
 	}
 
 	return nil
+}
+
+func cleanupRemovedExtraFiles(outputDir string, previous, next []PluginFileModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	absRoot, err := filepath.Abs(outputDir)
+	if err != nil {
+		diags.AddError("Path Resolution Failed", fmt.Sprintf("Failed to resolve output_dir %q: %s", outputDir, err))
+		return diags
+	}
+
+	nextPaths := make(map[string]struct{}, len(next))
+	for _, f := range next {
+		if f.Path.IsNull() || f.Path.IsUnknown() {
+			continue
+		}
+		nextPaths[filepath.ToSlash(f.Path.ValueString())] = struct{}{}
+	}
+
+	for _, f := range previous {
+		if f.Path.IsNull() || f.Path.IsUnknown() {
+			continue
+		}
+
+		relPath := filepath.ToSlash(f.Path.ValueString())
+		if _, exists := nextPaths[relPath]; exists {
+			continue
+		}
+
+		if filepath.IsAbs(relPath) || strings.Contains(relPath, "..") {
+			diags.AddError("Invalid File Path", fmt.Sprintf("File path %q must be relative and not contain '..'.", relPath))
+			return diags
+		}
+
+		target := filepath.Join(absRoot, relPath)
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			if rmErr := os.RemoveAll(target); rmErr != nil && !os.IsNotExist(rmErr) {
+				diags.AddError("File Delete Failed", fmt.Sprintf("Failed to delete removed file %q: %s", relPath, rmErr))
+				return diags
+			}
+		}
+
+		cleanupEmptyParents(filepath.Dir(target), absRoot)
+	}
+
+	return diags
+}
+
+func cleanupEmptyParents(startDir, stopDir string) {
+	dir := startDir
+	stop := filepath.Clean(stopDir)
+
+	for {
+		cleanDir := filepath.Clean(dir)
+		if cleanDir == stop || cleanDir == "." || cleanDir == string(filepath.Separator) {
+			return
+		}
+
+		err := os.Remove(cleanDir)
+		if err == nil || os.IsNotExist(err) {
+			dir = filepath.Dir(cleanDir)
+			continue
+		}
+
+		// Non-empty or permission errors should stop best-effort cleanup.
+		return
+	}
 }
 
 // --------------------------------------------------------------------------
