@@ -103,14 +103,14 @@ func TestWritePlugin_BasicManifest(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "test-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("test-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   stringValue("1.0.0"),
+		Name:        stringValue("test-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     stringValue("1.0.0"),
 		Description: stringValue("A test plugin"),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 	}
 
 	diags := r.writePlugin(context.Background(), model)
@@ -163,14 +163,14 @@ func TestWritePlugin_WithAuthor(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "author-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("author-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("author-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Author: []AuthorModel{
 			{
 				Name:  stringValue("Test Author"),
@@ -205,19 +205,109 @@ func TestWritePlugin_WithAuthor(t *testing.T) {
 	}
 }
 
+func TestWritePlugin_WithOutputStyles(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "output-style-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("output-style-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		OutputStyles: []PluginOutputStyleModel{
+			{
+				Path: stringValue("styles/concise.md"),
+			},
+			{
+				Path: stringValue("styles/detailed.md"),
+			},
+		},
+		Files: []PluginFileModel{
+			{
+				Path:       stringValue("styles/concise.md"),
+				Content:    stringValue("# Concise style"),
+				SourceFile: types.StringNull(),
+				Executable: types.BoolValue(false),
+			},
+			{
+				Path:       stringValue("styles/detailed.md"),
+				Content:    stringValue("# Detailed style"),
+				SourceFile: types.StringNull(),
+				Executable: types.BoolValue(false),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors: %v", diags.Errors())
+	}
+
+	var manifest map[string]interface{}
+	if err := json.Unmarshal([]byte(model.ManifestJSON.ValueString()), &manifest); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	styles, ok := manifest["outputStyles"].([]interface{})
+	if !ok {
+		t.Fatal("expected outputStyles array in manifest")
+	}
+	if len(styles) != 2 {
+		t.Fatalf("expected 2 outputStyles entries, got %d", len(styles))
+	}
+
+	first, ok := styles[0].(string)
+	if !ok {
+		t.Fatal("expected outputStyles entry string path")
+	}
+	if first != "./styles/concise.md" {
+		t.Errorf("expected first style path './styles/concise.md', got %v", first)
+	}
+}
+
+func TestWritePlugin_OutputStyleRejectsTraversalPath(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "bad-output-style-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("bad-output-style-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		OutputStyles: []PluginOutputStyleModel{
+			{
+				Path: stringValue("../outside.md"),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Fatal("expected error for output_style file path traversal")
+	}
+}
+
 func TestWritePlugin_WithInlineSkill(t *testing.T) {
 	r := &PluginResource{}
 	dir := filepath.Join(t.TempDir(), "skill-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("skill-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("skill-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Skills: []PluginSkillModel{
 			{
 				Name:      stringValue("code-reviewer"),
@@ -273,14 +363,14 @@ func TestWritePlugin_WithSourceDirSkill(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "srcdir-plugin")
 	model := &PluginResourceModel{
-		Name:      stringValue("srcdir-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("srcdir-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Skills: []PluginSkillModel{
 			{
 				Name:      stringValue("copied-skill"),
@@ -306,14 +396,14 @@ func TestWritePlugin_WithInlineAgent(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "agent-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("agent-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("agent-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Agents: []PluginAgentModel{
 			{
 				Name:       stringValue("security-reviewer"),
@@ -360,14 +450,14 @@ func TestWritePlugin_WithSourceFileAgent(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "srcfile-plugin")
 	model := &PluginResourceModel{
-		Name:      stringValue("srcfile-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("srcfile-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Agents: []PluginAgentModel{
 			{
 				Name:       stringValue("test-agent"),
@@ -390,14 +480,14 @@ func TestWritePlugin_WithCommand(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "cmd-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("cmd-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("cmd-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Commands: []PluginCommandModel{
 			{
 				Name:       stringValue("deploy"),
@@ -420,14 +510,14 @@ func TestWritePlugin_WithHooks(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hooks-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("hooks-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("hooks-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Hooks: []PluginHooksModel{
 			{
 				PostToolUse: []PluginHookMatcherModel{
@@ -495,14 +585,14 @@ func TestWritePlugin_WithMcpServers(t *testing.T) {
 	envMap, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"DB_PATH": "/data"})
 
 	model := &PluginResourceModel{
-		Name:      stringValue("mcp-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("mcp-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		McpServers: []PluginMcpModel{
 			{
 				Name:    stringValue("plugin-db"),
@@ -554,14 +644,14 @@ func TestWritePlugin_WithLspServers(t *testing.T) {
 	extMap, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{".go": "go"})
 
 	model := &PluginResourceModel{
-		Name:      stringValue("lsp-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("lsp-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		LspServers: []PluginLspModel{
 			{
 				Name:                  stringValue("go"),
@@ -572,6 +662,9 @@ func TestWritePlugin_WithLspServers(t *testing.T) {
 				InitializationOptions: types.MapNull(types.StringType),
 				Settings:              types.MapNull(types.StringType),
 				ExtensionToLanguage:   extMap,
+				WorkspaceFolder:       types.StringNull(),
+				StartupTimeout:        types.Int64Null(),
+				ShutdownTimeout:       types.Int64Null(),
 				RestartOnCrash:        types.BoolValue(false),
 				MaxRestarts:           types.Int64Null(),
 			},
@@ -609,6 +702,16 @@ func TestWritePlugin_WithLspServers(t *testing.T) {
 	if extToLang[".go"] != "go" {
 		t.Errorf("unexpected extension mapping: %v", extToLang)
 	}
+	// workspaceFolder, startupTimeout, shutdownTimeout should be absent when null
+	if _, ok := goServer["workspaceFolder"]; ok {
+		t.Error("expected workspaceFolder to be absent when null")
+	}
+	if _, ok := goServer["startupTimeout"]; ok {
+		t.Error("expected startupTimeout to be absent when null")
+	}
+	if _, ok := goServer["shutdownTimeout"]; ok {
+		t.Error("expected shutdownTimeout to be absent when null")
+	}
 }
 
 func TestWritePlugin_WithExtraFiles(t *testing.T) {
@@ -616,14 +719,14 @@ func TestWritePlugin_WithExtraFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "files-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("files-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("files-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Files: []PluginFileModel{
 			{
 				Path:       stringValue("scripts/format.sh"),
@@ -678,14 +781,14 @@ func TestWritePlugin_WithExtraFileFromSource(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "srcfile-files-plugin")
 	model := &PluginResourceModel{
-		Name:      stringValue("srcfile-files-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("srcfile-files-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Files: []PluginFileModel{
 			{
 				Path:       stringValue("scripts/deploy.sh"),
@@ -709,14 +812,14 @@ func TestWritePlugin_InvalidFilePath(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "invalid-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("invalid-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("invalid-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Files: []PluginFileModel{
 			{
 				Path:       stringValue("../escape/bad.sh"),
@@ -738,14 +841,14 @@ func TestWritePlugin_SkillMissingSourceAndContent(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "missing-plugin")
 
 	model := &PluginResourceModel{
-		Name:      stringValue("missing-plugin"),
-		OutputDir: stringValue(dir),
-		Version:   types.StringNull(),
+		Name:        stringValue("missing-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
 		Description: types.StringNull(),
-		Homepage:  types.StringNull(),
-		Repository: types.StringNull(),
-		License:   types.StringNull(),
-		Keywords:  types.ListNull(types.StringType),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
 		Skills: []PluginSkillModel{
 			{
 				Name:      stringValue("empty-skill"),
@@ -839,8 +942,11 @@ func TestWritePlugin_FullFeatured(t *testing.T) {
 				InitializationOptions: types.MapNull(types.StringType),
 				Settings:              types.MapNull(types.StringType),
 				ExtensionToLanguage:   extMap,
-				RestartOnCrash:        types.BoolValue(false),
-				MaxRestarts:           types.Int64Null(),
+				WorkspaceFolder:       stringValue("/workspace"),
+				StartupTimeout:        types.Int64Value(5000),
+				ShutdownTimeout:       types.Int64Value(3000),
+				RestartOnCrash:        types.BoolValue(true),
+				MaxRestarts:           types.Int64Value(5),
 			},
 		},
 		Files: []PluginFileModel{
@@ -939,25 +1045,29 @@ func TestBuildHooksJSON_AllEvents(t *testing.T) {
 	}
 
 	hooks := PluginHooksModel{
-		PreToolUse:       matcher(),
-		PostToolUse:      matcher(),
-		PostToolUseFail:  matcher(),
-		UserPromptSubmit: matcher(),
-		Notification:     matcher(),
-		Stop:             matcher(),
-		SubagentStart:    matcher(),
-		SubagentStop:     matcher(),
-		SessionStart:     matcher(),
-		SessionEnd:       matcher(),
-		PreCompact:       matcher(),
+		PreToolUse:        matcher(),
+		PostToolUse:       matcher(),
+		PostToolUseFail:   matcher(),
+		PermissionRequest: matcher(),
+		UserPromptSubmit:  matcher(),
+		Notification:      matcher(),
+		Stop:              matcher(),
+		SubagentStart:     matcher(),
+		SubagentStop:      matcher(),
+		SessionStart:      matcher(),
+		SessionEnd:        matcher(),
+		TeammateIdle:      matcher(),
+		TaskCompleted:     matcher(),
+		PreCompact:        matcher(),
 	}
 
 	result := r.buildHooksJSON(hooks)
 	expectedEvents := []string{
 		"PreToolUse", "PostToolUse", "PostToolUseFailure",
-		"UserPromptSubmit", "Notification", "Stop",
+		"PermissionRequest", "UserPromptSubmit", "Notification", "Stop",
 		"SubagentStart", "SubagentStop",
-		"SessionStart", "SessionEnd", "PreCompact",
+		"SessionStart", "SessionEnd",
+		"TeammateIdle", "TaskCompleted", "PreCompact",
 	}
 
 	for _, event := range expectedEvents {
@@ -1017,6 +1127,693 @@ func TestCopyFile_NonExistent(t *testing.T) {
 	diags := copyFile("/nonexistent/file.txt", filepath.Join(t.TempDir(), "dst.txt"))
 	if !diags.HasError() {
 		t.Error("expected error for non-existent source")
+	}
+}
+
+func TestWritePlugin_CleansRemovedCommandOnRewrite(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "rewrite-plugin")
+
+	initial := &PluginResourceModel{
+		Name:        stringValue("rewrite-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Commands: []PluginCommandModel{
+			{
+				Name:       stringValue("old-command"),
+				SourceFile: types.StringNull(),
+				Content:    stringValue("Old command content"),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), initial)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors in initial write: %v", diags.Errors())
+	}
+
+	oldCommandPath := filepath.Join(dir, "commands", "old-command.md")
+	if _, err := os.Stat(oldCommandPath); err != nil {
+		t.Fatalf("expected old command file to exist: %v", err)
+	}
+
+	updated := &PluginResourceModel{
+		Name:        stringValue("rewrite-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: stringValue("updated"),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+	}
+
+	diags = r.writePlugin(context.Background(), updated)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors in rewrite: %v", diags.Errors())
+	}
+
+	if _, err := os.Stat(oldCommandPath); !os.IsNotExist(err) {
+		t.Fatalf("expected old command file to be removed, got err=%v", err)
+	}
+
+	manifestPath := filepath.Join(dir, ".claude-plugin", "plugin.json")
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("expected manifest to exist after rewrite: %v", err)
+	}
+}
+
+func TestWritePlugin_CleansRemovedRuntimeConfigsOnRewrite(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "runtime-cleanup-plugin")
+
+	extMap, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{".go": "go"})
+	mcpArgs, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"--port", "8080"})
+
+	initial := &PluginResourceModel{
+		Name:        stringValue("runtime-cleanup-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Hooks: []PluginHooksModel{
+			{
+				PostToolUse: []PluginHookMatcherModel{
+					{
+						Matcher: stringValue("Write"),
+						Hooks: []PluginHookEntryModel{
+							{Type: stringValue("command"), Command: stringValue("echo ok")},
+						},
+					},
+				},
+			},
+		},
+		McpServers: []PluginMcpModel{
+			{
+				Name:    stringValue("local"),
+				Command: stringValue("server"),
+				Args:    mcpArgs,
+				Env:     types.MapNull(types.StringType),
+				URL:     types.StringNull(),
+				Cwd:     types.StringNull(),
+			},
+		},
+		LspServers: []PluginLspModel{
+			{
+				Name:                  stringValue("go"),
+				Command:               stringValue("gopls"),
+				Args:                  types.ListNull(types.StringType),
+				Transport:             types.StringNull(),
+				Env:                   types.MapNull(types.StringType),
+				InitializationOptions: types.MapNull(types.StringType),
+				Settings:              types.MapNull(types.StringType),
+				ExtensionToLanguage:   extMap,
+				WorkspaceFolder:       types.StringNull(),
+				StartupTimeout:        types.Int64Null(),
+				ShutdownTimeout:       types.Int64Null(),
+				RestartOnCrash:        types.BoolValue(false),
+				MaxRestarts:           types.Int64Null(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), initial)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors in initial write: %v", diags.Errors())
+	}
+
+	hooksPath := filepath.Join(dir, "hooks", "hooks.json")
+	mcpPath := filepath.Join(dir, ".mcp.json")
+	lspPath := filepath.Join(dir, ".lsp.json")
+	for _, p := range []string{hooksPath, mcpPath, lspPath} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected runtime config file %q to exist: %v", p, err)
+		}
+	}
+
+	updated := &PluginResourceModel{
+		Name:        stringValue("runtime-cleanup-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: stringValue("updated"),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+	}
+
+	diags = r.writePlugin(context.Background(), updated)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors in rewrite: %v", diags.Errors())
+	}
+
+	for _, p := range []string{hooksPath, mcpPath, lspPath} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("expected runtime config file %q to be removed, got err=%v", p, err)
+		}
+	}
+}
+
+// --------------------------------------------------------------------------
+// Mutual exclusion validation tests
+// --------------------------------------------------------------------------
+
+func TestWritePlugin_SkillBothSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	srcDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# Skill"), 0o644)
+
+	dir := filepath.Join(t.TempDir(), "both-plugin")
+	model := &PluginResourceModel{
+		Name:        stringValue("both-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Skills: []PluginSkillModel{
+			{
+				Name:      stringValue("conflicting-skill"),
+				SourceDir: stringValue(srcDir),
+				Content:   stringValue("inline content"),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both source_dir and content are set")
+	}
+	found := false
+	for _, d := range diags.Errors() {
+		if strings.Contains(d.Detail(), "not both") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected 'not both' in error message")
+	}
+}
+
+func TestWritePlugin_AgentMissingSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "missing-agent-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("missing-agent-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Agents: []PluginAgentModel{
+			{
+				Name:       stringValue("empty-agent"),
+				SourceFile: types.StringNull(),
+				Content:    types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both source_file and content are null")
+	}
+}
+
+func TestWritePlugin_AgentBothSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	srcFile := filepath.Join(t.TempDir(), "agent.md")
+	os.WriteFile(srcFile, []byte("# Agent"), 0o644)
+
+	dir := filepath.Join(t.TempDir(), "both-agent-plugin")
+	model := &PluginResourceModel{
+		Name:        stringValue("both-agent-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Agents: []PluginAgentModel{
+			{
+				Name:       stringValue("conflicting-agent"),
+				SourceFile: stringValue(srcFile),
+				Content:    stringValue("inline content"),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both source_file and content are set")
+	}
+}
+
+func TestWritePlugin_CommandMissingSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "missing-cmd-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("missing-cmd-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Commands: []PluginCommandModel{
+			{
+				Name:       stringValue("empty-cmd"),
+				SourceFile: types.StringNull(),
+				Content:    types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both source_file and content are null")
+	}
+}
+
+func TestWritePlugin_CommandBothSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	srcFile := filepath.Join(t.TempDir(), "cmd.md")
+	os.WriteFile(srcFile, []byte("# Command"), 0o644)
+
+	dir := filepath.Join(t.TempDir(), "both-cmd-plugin")
+	model := &PluginResourceModel{
+		Name:        stringValue("both-cmd-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Commands: []PluginCommandModel{
+			{
+				Name:       stringValue("conflicting-cmd"),
+				SourceFile: stringValue(srcFile),
+				Content:    stringValue("inline content"),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both source_file and content are set")
+	}
+}
+
+func TestWritePlugin_FileMissingSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "missing-file-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("missing-file-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Files: []PluginFileModel{
+			{
+				Path:       stringValue("some/file.txt"),
+				Content:    types.StringNull(),
+				SourceFile: types.StringNull(),
+				Executable: types.BoolValue(false),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both content and source_file are null")
+	}
+}
+
+func TestWritePlugin_FileBothSourceAndContent(t *testing.T) {
+	r := &PluginResource{}
+	srcFile := filepath.Join(t.TempDir(), "source.txt")
+	os.WriteFile(srcFile, []byte("source"), 0o644)
+
+	dir := filepath.Join(t.TempDir(), "both-file-plugin")
+	model := &PluginResourceModel{
+		Name:        stringValue("both-file-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Files: []PluginFileModel{
+			{
+				Path:       stringValue("scripts/test.sh"),
+				Content:    stringValue("inline content"),
+				SourceFile: stringValue(srcFile),
+				Executable: types.BoolValue(false),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error when both content and source_file are set")
+	}
+}
+
+func TestWritePlugin_FileAbsolutePath(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "abs-path-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("abs-path-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		Files: []PluginFileModel{
+			{
+				Path:       stringValue("/etc/evil.sh"),
+				Content:    stringValue("evil"),
+				SourceFile: types.StringNull(),
+				Executable: types.BoolValue(false),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Error("expected error for absolute file path")
+	}
+}
+
+// --------------------------------------------------------------------------
+// LSP new fields tests
+// --------------------------------------------------------------------------
+
+func TestWritePlugin_LspWithAllOptionalFields(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "lsp-full-plugin")
+
+	lspArgs, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"serve"})
+	extMap, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{".go": "go"})
+	envMap, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"GOPATH": "/go"})
+	initOpts, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"verbose": "true"})
+	settings, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"lint": "true"})
+
+	model := &PluginResourceModel{
+		Name:        stringValue("lsp-full-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		LspServers: []PluginLspModel{
+			{
+				Name:                  stringValue("go"),
+				Command:               stringValue("gopls"),
+				Args:                  lspArgs,
+				Transport:             stringValue("stdio"),
+				Env:                   envMap,
+				InitializationOptions: initOpts,
+				Settings:              settings,
+				ExtensionToLanguage:   extMap,
+				WorkspaceFolder:       stringValue("/workspace/project"),
+				StartupTimeout:        types.Int64Value(10000),
+				ShutdownTimeout:       types.Int64Value(5000),
+				RestartOnCrash:        types.BoolValue(true),
+				MaxRestarts:           types.Int64Value(3),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors: %v", diags.Errors())
+	}
+
+	lspPath := filepath.Join(dir, ".lsp.json")
+	data, err := os.ReadFile(lspPath)
+	if err != nil {
+		t.Fatalf("failed to read .lsp.json: %v", err)
+	}
+
+	var lspConfig map[string]interface{}
+	if err := json.Unmarshal(data, &lspConfig); err != nil {
+		t.Fatalf("invalid LSP JSON: %v", err)
+	}
+
+	goServer, ok := lspConfig["go"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'go' key in LSP config")
+	}
+
+	if goServer["workspaceFolder"] != "/workspace/project" {
+		t.Errorf("expected workspaceFolder '/workspace/project', got %v", goServer["workspaceFolder"])
+	}
+	// JSON numbers are float64 in Go
+	if goServer["startupTimeout"] != float64(10000) {
+		t.Errorf("expected startupTimeout 10000, got %v", goServer["startupTimeout"])
+	}
+	if goServer["shutdownTimeout"] != float64(5000) {
+		t.Errorf("expected shutdownTimeout 5000, got %v", goServer["shutdownTimeout"])
+	}
+	if goServer["restartOnCrash"] != true {
+		t.Errorf("expected restartOnCrash true, got %v", goServer["restartOnCrash"])
+	}
+	if goServer["maxRestarts"] != float64(3) {
+		t.Errorf("expected maxRestarts 3, got %v", goServer["maxRestarts"])
+	}
+	if goServer["transport"] != "stdio" {
+		t.Errorf("expected transport 'stdio', got %v", goServer["transport"])
+	}
+}
+
+// --------------------------------------------------------------------------
+// MCP with URL (SSE transport) test
+// --------------------------------------------------------------------------
+
+func TestWritePlugin_WithMcpServerURL(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "mcp-url-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("mcp-url-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		McpServers: []PluginMcpModel{
+			{
+				Name:    stringValue("remote-api"),
+				Command: types.StringNull(),
+				Args:    types.ListNull(types.StringType),
+				Env:     types.MapNull(types.StringType),
+				URL:     stringValue("https://mcp.example.com/api"),
+				Cwd:     types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("unexpected errors: %v", diags.Errors())
+	}
+
+	mcpPath := filepath.Join(dir, ".mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		t.Fatalf("failed to read .mcp.json: %v", err)
+	}
+
+	var mcpConfig map[string]interface{}
+	if err := json.Unmarshal(data, &mcpConfig); err != nil {
+		t.Fatalf("invalid MCP JSON: %v", err)
+	}
+
+	servers, ok := mcpConfig["mcpServers"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected mcpServers key")
+	}
+
+	remote, ok := servers["remote-api"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected remote-api server")
+	}
+	if remote["url"] != "https://mcp.example.com/api" {
+		t.Errorf("unexpected URL: %v", remote["url"])
+	}
+	if _, ok := remote["command"]; ok {
+		t.Error("expected command to be absent for URL-based server")
+	}
+}
+
+func TestWritePlugin_McpServerRequiresCommandOrURL(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "mcp-missing-transport-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("mcp-missing-transport-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		McpServers: []PluginMcpModel{
+			{
+				Name:    stringValue("missing"),
+				Command: types.StringNull(),
+				Args:    types.ListNull(types.StringType),
+				Env:     types.MapNull(types.StringType),
+				URL:     types.StringNull(),
+				Cwd:     types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Fatal("expected error when both command and url are unset")
+	}
+}
+
+func TestWritePlugin_McpServerRejectsCommandAndURLTogether(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "mcp-dual-transport-plugin")
+
+	model := &PluginResourceModel{
+		Name:        stringValue("mcp-dual-transport-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		McpServers: []PluginMcpModel{
+			{
+				Name:    stringValue("dual"),
+				Command: stringValue("server"),
+				Args:    types.ListNull(types.StringType),
+				Env:     types.MapNull(types.StringType),
+				URL:     stringValue("https://mcp.example.com"),
+				Cwd:     types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Fatal("expected error when both command and url are set")
+	}
+}
+
+func TestWritePlugin_McpServerURLRejectsLocalFields(t *testing.T) {
+	r := &PluginResource{}
+	dir := filepath.Join(t.TempDir(), "mcp-url-local-fields-plugin")
+	args, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"--port", "8080"})
+
+	model := &PluginResourceModel{
+		Name:        stringValue("mcp-url-local-fields-plugin"),
+		OutputDir:   stringValue(dir),
+		Version:     types.StringNull(),
+		Description: types.StringNull(),
+		Homepage:    types.StringNull(),
+		Repository:  types.StringNull(),
+		License:     types.StringNull(),
+		Keywords:    types.ListNull(types.StringType),
+		McpServers: []PluginMcpModel{
+			{
+				Name:    stringValue("remote"),
+				Command: types.StringNull(),
+				Args:    args,
+				Env:     types.MapNull(types.StringType),
+				URL:     stringValue("https://mcp.example.com"),
+				Cwd:     types.StringNull(),
+			},
+		},
+	}
+
+	diags := r.writePlugin(context.Background(), model)
+	if !diags.HasError() {
+		t.Fatal("expected error when url server sets args")
+	}
+}
+
+// --------------------------------------------------------------------------
+// Hook type variety tests
+// --------------------------------------------------------------------------
+
+func TestBuildHooksJSON_PromptAndAgentTypes(t *testing.T) {
+	r := &PluginResource{}
+
+	hooks := PluginHooksModel{
+		PreToolUse: []PluginHookMatcherModel{
+			{
+				Matcher: stringValue("Bash"),
+				Hooks: []PluginHookEntryModel{
+					{Type: stringValue("prompt"), Command: stringValue("Check if this bash command is safe: $ARGUMENTS")},
+				},
+			},
+		},
+		PostToolUse: []PluginHookMatcherModel{
+			{
+				Matcher: stringValue("Write"),
+				Hooks: []PluginHookEntryModel{
+					{Type: stringValue("agent"), Command: stringValue("Verify the written file follows coding standards")},
+				},
+			},
+		},
+	}
+
+	result := r.buildHooksJSON(hooks)
+
+	preToolUse, ok := result["PreToolUse"].([]map[string]interface{})
+	if !ok || len(preToolUse) != 1 {
+		t.Fatal("expected 1 PreToolUse entry")
+	}
+	hookList := preToolUse[0]["hooks"].([]map[string]interface{})
+	if hookList[0]["type"] != "prompt" {
+		t.Errorf("expected type 'prompt', got %v", hookList[0]["type"])
+	}
+
+	postToolUse, ok := result["PostToolUse"].([]map[string]interface{})
+	if !ok || len(postToolUse) != 1 {
+		t.Fatal("expected 1 PostToolUse entry")
+	}
+	hookList = postToolUse[0]["hooks"].([]map[string]interface{})
+	if hookList[0]["type"] != "agent" {
+		t.Errorf("expected type 'agent', got %v", hookList[0]["type"])
 	}
 }
 

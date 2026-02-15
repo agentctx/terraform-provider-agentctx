@@ -20,19 +20,20 @@ type PluginResourceModel struct {
 	Author []AuthorModel `tfsdk:"author"`
 
 	// Optional – component blocks
-	Skills     []PluginSkillModel   `tfsdk:"skill"`
-	Agents     []PluginAgentModel   `tfsdk:"agent"`
-	Commands   []PluginCommandModel `tfsdk:"command"`
-	McpServers []PluginMcpModel     `tfsdk:"mcp_server"`
-	LspServers []PluginLspModel     `tfsdk:"lsp_server"`
-	Hooks      []PluginHooksModel   `tfsdk:"hooks"`
-	Files      []PluginFileModel    `tfsdk:"file"`
+	OutputStyles []PluginOutputStyleModel `tfsdk:"output_style"`
+	Skills       []PluginSkillModel       `tfsdk:"skill"`
+	Agents       []PluginAgentModel       `tfsdk:"agent"`
+	Commands     []PluginCommandModel     `tfsdk:"command"`
+	McpServers   []PluginMcpModel         `tfsdk:"mcp_server"`
+	LspServers   []PluginLspModel         `tfsdk:"lsp_server"`
+	Hooks        []PluginHooksModel       `tfsdk:"hooks"`
+	Files        []PluginFileModel        `tfsdk:"file"`
 
 	// Computed
-	ID          types.String `tfsdk:"id"`
-	PluginDir   types.String `tfsdk:"plugin_dir"`
+	ID           types.String `tfsdk:"id"`
+	PluginDir    types.String `tfsdk:"plugin_dir"`
 	ManifestJSON types.String `tfsdk:"manifest_json"`
-	ContentHash types.String `tfsdk:"content_hash"`
+	ContentHash  types.String `tfsdk:"content_hash"`
 }
 
 // AuthorModel maps the author {} block.
@@ -40,6 +41,11 @@ type AuthorModel struct {
 	Name  types.String `tfsdk:"name"`
 	Email types.String `tfsdk:"email"`
 	URL   types.String `tfsdk:"url"`
+}
+
+// PluginOutputStyleModel maps an output_style {} block.
+type PluginOutputStyleModel struct {
+	Path types.String `tfsdk:"path"`
 }
 
 // PluginSkillModel maps a skill {} block. Skills can be sourced from a local
@@ -87,28 +93,34 @@ type PluginLspModel struct {
 	InitializationOptions types.Map    `tfsdk:"initialization_options"`
 	Settings              types.Map    `tfsdk:"settings"`
 	ExtensionToLanguage   types.Map    `tfsdk:"extension_to_language"`
+	WorkspaceFolder       types.String `tfsdk:"workspace_folder"`
+	StartupTimeout        types.Int64  `tfsdk:"startup_timeout"`
+	ShutdownTimeout       types.Int64  `tfsdk:"shutdown_timeout"`
 	RestartOnCrash        types.Bool   `tfsdk:"restart_on_crash"`
 	MaxRestarts           types.Int64  `tfsdk:"max_restarts"`
 }
 
 // PluginHooksModel maps the hooks {} block.
 type PluginHooksModel struct {
-	PreToolUse       []PluginHookMatcherModel `tfsdk:"pre_tool_use"`
-	PostToolUse      []PluginHookMatcherModel `tfsdk:"post_tool_use"`
-	PostToolUseFail  []PluginHookMatcherModel `tfsdk:"post_tool_use_failure"`
-	UserPromptSubmit []PluginHookMatcherModel `tfsdk:"user_prompt_submit"`
-	Notification     []PluginHookMatcherModel `tfsdk:"notification"`
-	Stop             []PluginHookMatcherModel `tfsdk:"stop"`
-	SubagentStart    []PluginHookMatcherModel `tfsdk:"subagent_start"`
-	SubagentStop     []PluginHookMatcherModel `tfsdk:"subagent_stop"`
-	SessionStart     []PluginHookMatcherModel `tfsdk:"session_start"`
-	SessionEnd       []PluginHookMatcherModel `tfsdk:"session_end"`
-	PreCompact       []PluginHookMatcherModel `tfsdk:"pre_compact"`
+	PreToolUse        []PluginHookMatcherModel `tfsdk:"pre_tool_use"`
+	PostToolUse       []PluginHookMatcherModel `tfsdk:"post_tool_use"`
+	PostToolUseFail   []PluginHookMatcherModel `tfsdk:"post_tool_use_failure"`
+	PermissionRequest []PluginHookMatcherModel `tfsdk:"permission_request"`
+	UserPromptSubmit  []PluginHookMatcherModel `tfsdk:"user_prompt_submit"`
+	Notification      []PluginHookMatcherModel `tfsdk:"notification"`
+	Stop              []PluginHookMatcherModel `tfsdk:"stop"`
+	SubagentStart     []PluginHookMatcherModel `tfsdk:"subagent_start"`
+	SubagentStop      []PluginHookMatcherModel `tfsdk:"subagent_stop"`
+	SessionStart      []PluginHookMatcherModel `tfsdk:"session_start"`
+	SessionEnd        []PluginHookMatcherModel `tfsdk:"session_end"`
+	TeammateIdle      []PluginHookMatcherModel `tfsdk:"teammate_idle"`
+	TaskCompleted     []PluginHookMatcherModel `tfsdk:"task_completed"`
+	PreCompact        []PluginHookMatcherModel `tfsdk:"pre_compact"`
 }
 
 // PluginHookMatcherModel maps a single hook matcher entry.
 type PluginHookMatcherModel struct {
-	Matcher types.String         `tfsdk:"matcher"`
+	Matcher types.String           `tfsdk:"matcher"`
 	Hooks   []PluginHookEntryModel `tfsdk:"hook"`
 }
 

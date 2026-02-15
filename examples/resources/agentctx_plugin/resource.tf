@@ -89,19 +89,27 @@ resource "agentctx_plugin" "enterprise" {
     content = "Show current deployment status and health checks."
   }
 
-  # Event hooks using ${CLAUDE_PLUGIN_ROOT} for portable paths
+  output_style {
+    path = "styles/concise.md"
+  }
+
+  output_style {
+    path = "styles/detailed.md"
+  }
+
+  # Event hooks using $${CLAUDE_PLUGIN_ROOT} for portable paths
   hooks {
     post_tool_use {
       matcher = "Write|Edit"
       hook {
         type    = "command"
-        command = "${CLAUDE_PLUGIN_ROOT}/scripts/lint.sh"
+        command = "$${CLAUDE_PLUGIN_ROOT}/scripts/lint.sh"
       }
     }
     session_start {
       hook {
         type    = "command"
-        command = "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh"
+        command = "$${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh"
       }
     }
   }
@@ -109,8 +117,8 @@ resource "agentctx_plugin" "enterprise" {
   # Bundled MCP server
   mcp_server {
     name    = "deploy-api"
-    command = "${CLAUDE_PLUGIN_ROOT}/servers/deploy-api"
-    args    = ["--config", "${CLAUDE_PLUGIN_ROOT}/config.json"]
+    command = "$${CLAUDE_PLUGIN_ROOT}/servers/deploy-api"
+    args    = ["--config", "$${CLAUDE_PLUGIN_ROOT}/config.json"]
     env = {
       LOG_LEVEL = "info"
     }
@@ -144,6 +152,16 @@ resource "agentctx_plugin" "enterprise" {
   file {
     path    = "config.json"
     content = jsonencode({ port = 3000, debug = false })
+  }
+
+  file {
+    path    = "styles/concise.md"
+    content = "# Concise output style\n\nRespond with a short summary and explicit next action."
+  }
+
+  file {
+    path    = "styles/detailed.md"
+    content = "# Detailed output style\n\nRespond with context, reasoning, and a remediation checklist."
   }
 }
 

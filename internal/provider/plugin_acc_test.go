@@ -83,6 +83,39 @@ resource "agentctx_plugin" "test" {
 	})
 }
 
+func TestAccPlugin_WithOutputStyles(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "output-style-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "output-style-plugin"
+  output_dir = %q
+
+  output_style {
+    path = "styles/concise.md"
+  }
+
+  file {
+    path    = "styles/concise.md"
+    content = "# Concise style"
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestMatchResourceAttr("agentctx_plugin.test", "manifest_json", regexp.MustCompile(`outputStyles`)),
+					resource.TestMatchResourceAttr("agentctx_plugin.test", "manifest_json", regexp.MustCompile(`styles/concise.md`)),
+				),
+			},
+		},
+	})
+}
+
 func TestAccPlugin_WithInlineSkill(t *testing.T) {
 	acctest.SetupTest(t)
 
@@ -232,23 +265,23 @@ resource "agentctx_plugin" "test" {
       matcher = "Write|Edit"
       hook {
         type    = "command"
-        command = "${CLAUDE_PLUGIN_ROOT}/scripts/format.sh"
+        command = "$${CLAUDE_PLUGIN_ROOT}/scripts/format.sh"
       }
     }
     stop {
       hook {
         type    = "command"
-        command = "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh"
+        command = "$${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.sh"
       }
     }
   }
 
   mcp_server {
     name    = "plugin-db"
-    command = "${CLAUDE_PLUGIN_ROOT}/servers/db"
+    command = "$${CLAUDE_PLUGIN_ROOT}/servers/db"
     args    = ["--port", "8080"]
     env     = {
-      DB_PATH = "${CLAUDE_PLUGIN_ROOT}/data"
+      DB_PATH = "$${CLAUDE_PLUGIN_ROOT}/data"
     }
   }
 }
@@ -439,6 +472,96 @@ resource "agentctx_plugin" "test" {
 	})
 }
 
+func TestAccPlugin_CleanupOnUpdate(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "cleanup-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "cleanup-plugin"
+  output_dir = %q
+
+  command {
+    name    = "old-command"
+    content = "Old command"
+  }
+
+  hooks {
+    post_tool_use {
+      hook {
+        type    = "command"
+        command = "echo hook"
+      }
+    }
+  }
+
+  mcp_server {
+    name    = "old-mcp"
+    command = "old-server"
+    args    = ["--port", "1234"]
+  }
+
+  lsp_server {
+    name    = "go"
+    command = "gopls"
+    extension_to_language = {
+      ".go" = "go"
+    }
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(s *terraform.State) error {
+						files := []string{
+							"commands/old-command.md",
+							"hooks/hooks.json",
+							".mcp.json",
+							".lsp.json",
+						}
+						for _, f := range files {
+							if _, err := os.Stat(filepath.Join(outputDir, f)); os.IsNotExist(err) {
+								return fmt.Errorf("expected file to exist before cleanup: %s", f)
+							}
+						}
+						return nil
+					},
+				),
+			},
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name        = "cleanup-plugin"
+  output_dir  = %q
+  description = "post-cleanup"
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("agentctx_plugin.test", "description", "post-cleanup"),
+					func(s *terraform.State) error {
+						files := []string{
+							"commands/old-command.md",
+							"hooks/hooks.json",
+							".mcp.json",
+							".lsp.json",
+						}
+						for _, f := range files {
+							if _, err := os.Stat(filepath.Join(outputDir, f)); !os.IsNotExist(err) {
+								return fmt.Errorf("expected file to be removed after cleanup: %s (err=%v)", f, err)
+							}
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
 func TestAccPlugin_FullFeatured(t *testing.T) {
 	acctest.SetupTest(t)
 
@@ -498,14 +621,14 @@ resource "agentctx_plugin" "test" {
       matcher = "Write|Edit"
       hook {
         type    = "command"
-        command = "${CLAUDE_PLUGIN_ROOT}/scripts/lint.sh"
+        command = "$${CLAUDE_PLUGIN_ROOT}/scripts/lint.sh"
       }
     }
   }
 
   mcp_server {
     name    = "deploy-server"
-    command = "${CLAUDE_PLUGIN_ROOT}/servers/deploy"
+    command = "$${CLAUDE_PLUGIN_ROOT}/servers/deploy"
     args    = ["--port", "3000"]
   }
 
@@ -580,6 +703,188 @@ resource "agentctx_plugin" "test" {
 }
 `, outputDir),
 				ExpectError: regexp.MustCompile(`must contain only lowercase letters`),
+			},
+		},
+	})
+}
+
+func TestAccPlugin_WithNewHookEvents(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "new-hooks-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "new-hooks-plugin"
+  output_dir = %q
+
+  hooks {
+    permission_request {
+      hook {
+        type    = "command"
+        command = "echo permission"
+      }
+    }
+    teammate_idle {
+      hook {
+        type    = "command"
+        command = "echo idle"
+      }
+    }
+    task_completed {
+      hook {
+        type    = "command"
+        command = "echo completed"
+      }
+    }
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestMatchResourceAttr("agentctx_plugin.test", "manifest_json", regexp.MustCompile(`hooks`)),
+					func(s *terraform.State) error {
+						hooksPath := filepath.Join(outputDir, "hooks", "hooks.json")
+						data, err := os.ReadFile(hooksPath)
+						if err != nil {
+							return fmt.Errorf("failed to read hooks.json: %w", err)
+						}
+						var wrapper map[string]interface{}
+						if err := json.Unmarshal(data, &wrapper); err != nil {
+							return fmt.Errorf("invalid hooks JSON: %w", err)
+						}
+						hooks, ok := wrapper["hooks"].(map[string]interface{})
+						if !ok {
+							return fmt.Errorf("expected hooks key")
+						}
+						for _, event := range []string{"PermissionRequest", "TeammateIdle", "TaskCompleted"} {
+							if _, ok := hooks[event]; !ok {
+								return fmt.Errorf("expected %s in hooks.json", event)
+							}
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestAccPlugin_WithLspAllFields(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "lsp-full-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "lsp-full-plugin"
+  output_dir = %q
+
+  lsp_server {
+    name    = "go"
+    command = "gopls"
+    args    = ["serve"]
+    extension_to_language = {
+      ".go" = "go"
+    }
+    workspace_folder = "/workspace"
+    startup_timeout  = 10000
+    shutdown_timeout = 5000
+    restart_on_crash = true
+    max_restarts     = 3
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(s *terraform.State) error {
+						lspPath := filepath.Join(outputDir, ".lsp.json")
+						data, err := os.ReadFile(lspPath)
+						if err != nil {
+							return fmt.Errorf("failed to read .lsp.json: %w", err)
+						}
+						var lsp map[string]interface{}
+						if err := json.Unmarshal(data, &lsp); err != nil {
+							return fmt.Errorf("invalid LSP JSON: %w", err)
+						}
+						goConfig, ok := lsp["go"].(map[string]interface{})
+						if !ok {
+							return fmt.Errorf("expected 'go' key in .lsp.json")
+						}
+						if goConfig["workspaceFolder"] != "/workspace" {
+							return fmt.Errorf("expected workspaceFolder '/workspace', got %v", goConfig["workspaceFolder"])
+						}
+						if goConfig["startupTimeout"] != float64(10000) {
+							return fmt.Errorf("expected startupTimeout 10000, got %v", goConfig["startupTimeout"])
+						}
+						if goConfig["shutdownTimeout"] != float64(5000) {
+							return fmt.Errorf("expected shutdownTimeout 5000, got %v", goConfig["shutdownTimeout"])
+						}
+						if goConfig["restartOnCrash"] != true {
+							return fmt.Errorf("expected restartOnCrash true, got %v", goConfig["restartOnCrash"])
+						}
+						if goConfig["maxRestarts"] != float64(3) {
+							return fmt.Errorf("expected maxRestarts 3, got %v", goConfig["maxRestarts"])
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestAccPlugin_WithMcpServerURL(t *testing.T) {
+	acctest.SetupTest(t)
+
+	outputDir := filepath.Join(t.TempDir(), "mcp-url-plugin")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: acctest.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.ProviderConfigMemory("test") + fmt.Sprintf(`
+resource "agentctx_plugin" "test" {
+  name       = "mcp-url-plugin"
+  output_dir = %q
+
+  mcp_server {
+    name = "remote-api"
+    url  = "https://mcp.example.com/api"
+  }
+}
+`, outputDir),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(s *terraform.State) error {
+						mcpPath := filepath.Join(outputDir, ".mcp.json")
+						data, err := os.ReadFile(mcpPath)
+						if err != nil {
+							return fmt.Errorf("failed to read .mcp.json: %w", err)
+						}
+						var mcp map[string]interface{}
+						if err := json.Unmarshal(data, &mcp); err != nil {
+							return fmt.Errorf("invalid MCP JSON: %w", err)
+						}
+						servers, ok := mcp["mcpServers"].(map[string]interface{})
+						if !ok {
+							return fmt.Errorf("expected mcpServers key")
+						}
+						remote, ok := servers["remote-api"].(map[string]interface{})
+						if !ok {
+							return fmt.Errorf("expected remote-api server")
+						}
+						if remote["url"] != "https://mcp.example.com/api" {
+							return fmt.Errorf("expected url, got %v", remote["url"])
+						}
+						return nil
+					},
+				),
 			},
 		},
 	})

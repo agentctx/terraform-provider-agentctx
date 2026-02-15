@@ -156,6 +156,17 @@ func (r *PluginResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					},
 				},
 			},
+			"output_style": schema.ListNestedBlock{
+				MarkdownDescription: "Output style markdown files or directories to load. These are rendered to `plugin.json` as `outputStyles` paths.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"path": schema.StringAttribute{
+							MarkdownDescription: "Relative path to an output style markdown file or directory within the plugin.",
+							Required:            true,
+						},
+					},
+				},
+			},
 			"skill": schema.ListNestedBlock{
 				MarkdownDescription: "Skills to include in the plugin. Each skill is placed in the `skills/<name>/` directory. Provide either `source_dir` to copy an existing skill directory (e.g. from an `agentctx_skill` resource's source) or `content` to write a `SKILL.md` inline.",
 				NestedObject: schema.NestedBlockObject{
@@ -308,6 +319,18 @@ func (r *PluginResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 							Required:            true,
 							ElementType:         types.StringType,
 						},
+						"workspace_folder": schema.StringAttribute{
+							MarkdownDescription: "Workspace folder path for the server.",
+							Optional:            true,
+						},
+						"startup_timeout": schema.Int64Attribute{
+							MarkdownDescription: "Maximum time to wait for server startup in milliseconds.",
+							Optional:            true,
+						},
+						"shutdown_timeout": schema.Int64Attribute{
+							MarkdownDescription: "Maximum time to wait for graceful shutdown in milliseconds.",
+							Optional:            true,
+						},
 						"restart_on_crash": schema.BoolAttribute{
 							MarkdownDescription: "Whether to automatically restart the server if it crashes.",
 							Optional:            true,
@@ -328,17 +351,20 @@ func (r *PluginResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 				NestedObject: schema.NestedBlockObject{
 					Blocks: map[string]schema.Block{
-						"pre_tool_use":         hookEventBlockSchema("Hooks that run before Claude uses a tool."),
-						"post_tool_use":        hookEventBlockSchema("Hooks that run after Claude successfully uses a tool."),
+						"pre_tool_use":          hookEventBlockSchema("Hooks that run before Claude uses a tool."),
+						"post_tool_use":         hookEventBlockSchema("Hooks that run after Claude successfully uses a tool."),
 						"post_tool_use_failure": hookEventBlockSchema("Hooks that run after a Claude tool execution fails."),
-						"user_prompt_submit":   hookEventBlockSchema("Hooks that run when the user submits a prompt."),
-						"notification":         hookEventBlockSchema("Hooks that run when Claude Code sends notifications."),
-						"stop":                hookEventBlockSchema("Hooks that run when Claude attempts to stop."),
-						"subagent_start":       hookEventBlockSchema("Hooks that run when a subagent is started."),
-						"subagent_stop":        hookEventBlockSchema("Hooks that run when a subagent attempts to stop."),
-						"session_start":        hookEventBlockSchema("Hooks that run at the beginning of sessions."),
-						"session_end":          hookEventBlockSchema("Hooks that run at the end of sessions."),
-						"pre_compact":          hookEventBlockSchema("Hooks that run before conversation history is compacted."),
+						"permission_request":    hookEventBlockSchema("Hooks that run when a permission dialog is shown."),
+						"user_prompt_submit":    hookEventBlockSchema("Hooks that run when the user submits a prompt."),
+						"notification":          hookEventBlockSchema("Hooks that run when Claude Code sends notifications."),
+						"stop":                  hookEventBlockSchema("Hooks that run when Claude attempts to stop."),
+						"subagent_start":        hookEventBlockSchema("Hooks that run when a subagent is started."),
+						"subagent_stop":         hookEventBlockSchema("Hooks that run when a subagent attempts to stop."),
+						"session_start":         hookEventBlockSchema("Hooks that run at the beginning of sessions."),
+						"session_end":           hookEventBlockSchema("Hooks that run at the end of sessions."),
+						"teammate_idle":         hookEventBlockSchema("Hooks that run when an agent team teammate is about to go idle."),
+						"task_completed":        hookEventBlockSchema("Hooks that run when a task is being marked as completed."),
+						"pre_compact":           hookEventBlockSchema("Hooks that run before conversation history is compacted."),
 					},
 				},
 			},
@@ -529,20 +555,21 @@ func (r *PluginResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 // pluginManifest represents the .claude-plugin/plugin.json structure.
 type pluginManifest struct {
-	Name        string          `json:"name"`
-	Version     string          `json:"version,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Author      *manifestAuthor `json:"author,omitempty"`
-	Homepage    string          `json:"homepage,omitempty"`
-	Repository  string          `json:"repository,omitempty"`
-	License     string          `json:"license,omitempty"`
-	Keywords    []string        `json:"keywords,omitempty"`
-	Commands    []string        `json:"commands,omitempty"`
-	Agents      []string        `json:"agents,omitempty"`
-	Skills      []string        `json:"skills,omitempty"`
-	Hooks       interface{}     `json:"hooks,omitempty"`
-	McpServers  interface{}     `json:"mcpServers,omitempty"`
-	LspServers  interface{}     `json:"lspServers,omitempty"`
+	Name         string          `json:"name"`
+	Version      string          `json:"version,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	Author       *manifestAuthor `json:"author,omitempty"`
+	Homepage     string          `json:"homepage,omitempty"`
+	Repository   string          `json:"repository,omitempty"`
+	License      string          `json:"license,omitempty"`
+	Keywords     []string        `json:"keywords,omitempty"`
+	OutputStyles []string        `json:"outputStyles,omitempty"`
+	Commands     []string        `json:"commands,omitempty"`
+	Agents       []string        `json:"agents,omitempty"`
+	Skills       []string        `json:"skills,omitempty"`
+	Hooks        interface{}     `json:"hooks,omitempty"`
+	McpServers   interface{}     `json:"mcpServers,omitempty"`
+	LspServers   interface{}     `json:"lspServers,omitempty"`
 }
 
 type manifestAuthor struct {
@@ -562,6 +589,13 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 	absDir, err := filepath.Abs(outputDir)
 	if err != nil {
 		diags.AddError("Path Resolution Failed", fmt.Sprintf("Failed to resolve absolute path for %q: %s", outputDir, err))
+		return diags
+	}
+
+	// Clean managed artifacts before regenerating so removed blocks don't leave
+	// stale files behind across updates.
+	if err := cleanupManagedArtifacts(absDir); err != nil {
+		diags.AddError("Cleanup Failed", fmt.Sprintf("Failed to clean managed plugin artifacts in %q: %s", absDir, err))
 		return diags
 	}
 
@@ -601,6 +635,24 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 		manifest.Keywords = keywords
 	}
 
+	// Output styles
+	if len(model.OutputStyles) > 0 {
+		paths := make([]string, 0, len(model.OutputStyles))
+		for _, s := range model.OutputStyles {
+			relPath := s.Path.ValueString()
+			if filepath.IsAbs(relPath) || strings.Contains(relPath, "..") {
+				diags.AddError(
+					"Invalid Output Style Path",
+					fmt.Sprintf("Output style path %q must be relative and must not contain '..'.", relPath),
+				)
+				return diags
+			}
+
+			paths = append(paths, withDotSlash(relPath))
+		}
+		manifest.OutputStyles = paths
+	}
+
 	// Author
 	if len(model.Author) > 0 {
 		a := model.Author[0]
@@ -627,7 +679,16 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 			name := s.Name.ValueString()
 			skillDir := filepath.Join(skillsDir, name)
 
-			if !s.SourceDir.IsNull() && !s.SourceDir.IsUnknown() {
+			hasSource := !s.SourceDir.IsNull() && !s.SourceDir.IsUnknown()
+			hasContent := !s.Content.IsNull() && !s.Content.IsUnknown()
+
+			if hasSource && hasContent {
+				diags.AddError("Invalid Skill Configuration",
+					fmt.Sprintf("Skill %q must have either source_dir or content set, not both.", name))
+				return diags
+			}
+
+			if hasSource {
 				// Copy the entire source directory.
 				srcDir := s.SourceDir.ValueString()
 				d := copyDirectory(srcDir, skillDir)
@@ -635,7 +696,7 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 				if diags.HasError() {
 					return diags
 				}
-			} else if !s.Content.IsNull() && !s.Content.IsUnknown() {
+			} else if hasContent {
 				// Write SKILL.md inline.
 				if err := os.MkdirAll(skillDir, 0o755); err != nil {
 					diags.AddError("Directory Create Failed", fmt.Sprintf("Failed to create skill directory %q: %s", skillDir, err))
@@ -669,13 +730,22 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 			name := a.Name.ValueString()
 			destPath := filepath.Join(agentsDir, name+".md")
 
-			if !a.SourceFile.IsNull() && !a.SourceFile.IsUnknown() {
+			hasSource := !a.SourceFile.IsNull() && !a.SourceFile.IsUnknown()
+			hasContent := !a.Content.IsNull() && !a.Content.IsUnknown()
+
+			if hasSource && hasContent {
+				diags.AddError("Invalid Agent Configuration",
+					fmt.Sprintf("Agent %q must have either source_file or content set, not both.", name))
+				return diags
+			}
+
+			if hasSource {
 				d := copyFile(a.SourceFile.ValueString(), destPath)
 				diags.Append(d...)
 				if diags.HasError() {
 					return diags
 				}
-			} else if !a.Content.IsNull() && !a.Content.IsUnknown() {
+			} else if hasContent {
 				if err := os.WriteFile(destPath, []byte(a.Content.ValueString()), 0o644); err != nil {
 					diags.AddError("File Write Failed", fmt.Sprintf("Failed to write agent file for %q: %s", name, err))
 					return diags
@@ -704,13 +774,22 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 			name := c.Name.ValueString()
 			destPath := filepath.Join(commandsDir, name+".md")
 
-			if !c.SourceFile.IsNull() && !c.SourceFile.IsUnknown() {
+			hasSource := !c.SourceFile.IsNull() && !c.SourceFile.IsUnknown()
+			hasContent := !c.Content.IsNull() && !c.Content.IsUnknown()
+
+			if hasSource && hasContent {
+				diags.AddError("Invalid Command Configuration",
+					fmt.Sprintf("Command %q must have either source_file or content set, not both.", name))
+				return diags
+			}
+
+			if hasSource {
 				d := copyFile(c.SourceFile.ValueString(), destPath)
 				diags.Append(d...)
 				if diags.HasError() {
 					return diags
 				}
-			} else if !c.Content.IsNull() && !c.Content.IsUnknown() {
+			} else if hasContent {
 				if err := os.WriteFile(destPath, []byte(c.Content.ValueString()), 0o644); err != nil {
 					diags.AddError("File Write Failed", fmt.Sprintf("Failed to write command file for %q: %s", name, err))
 					return diags
@@ -751,6 +830,12 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 
 	// MCP Servers
 	if len(model.McpServers) > 0 {
+		d := r.validateMcpServers(ctx, model.McpServers)
+		diags.Append(d...)
+		if diags.HasError() {
+			return diags
+		}
+
 		mcpConfig := r.buildMcpJSON(ctx, model.McpServers, &diags)
 		if diags.HasError() {
 			return diags
@@ -807,7 +892,16 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 			perm = 0o755
 		}
 
-		if !f.SourceFile.IsNull() && !f.SourceFile.IsUnknown() {
+		hasSource := !f.SourceFile.IsNull() && !f.SourceFile.IsUnknown()
+		hasContent := !f.Content.IsNull() && !f.Content.IsUnknown()
+
+		if hasSource && hasContent {
+			diags.AddError("Invalid File Configuration",
+				fmt.Sprintf("File %q must have either content or source_file set, not both.", relPath))
+			return diags
+		}
+
+		if hasSource {
 			data, err := os.ReadFile(f.SourceFile.ValueString())
 			if err != nil {
 				diags.AddError("File Read Failed", fmt.Sprintf("Failed to read source file %q: %s", f.SourceFile.ValueString(), err))
@@ -817,7 +911,7 @@ func (r *PluginResource) writePlugin(ctx context.Context, model *PluginResourceM
 				diags.AddError("File Write Failed", fmt.Sprintf("Failed to write file %q: %s", relPath, err))
 				return diags
 			}
-		} else if !f.Content.IsNull() && !f.Content.IsUnknown() {
+		} else if hasContent {
 			if err := os.WriteFile(destPath, []byte(f.Content.ValueString()), perm); err != nil {
 				diags.AddError("File Write Failed", fmt.Sprintf("Failed to write file %q: %s", relPath, err))
 				return diags
@@ -888,6 +982,7 @@ func (r *PluginResource) buildHooksJSON(hooks PluginHooksModel) map[string]inter
 	addEvent("PreToolUse", hooks.PreToolUse)
 	addEvent("PostToolUse", hooks.PostToolUse)
 	addEvent("PostToolUseFailure", hooks.PostToolUseFail)
+	addEvent("PermissionRequest", hooks.PermissionRequest)
 	addEvent("UserPromptSubmit", hooks.UserPromptSubmit)
 	addEvent("Notification", hooks.Notification)
 	addEvent("Stop", hooks.Stop)
@@ -895,9 +990,63 @@ func (r *PluginResource) buildHooksJSON(hooks PluginHooksModel) map[string]inter
 	addEvent("SubagentStop", hooks.SubagentStop)
 	addEvent("SessionStart", hooks.SessionStart)
 	addEvent("SessionEnd", hooks.SessionEnd)
+	addEvent("TeammateIdle", hooks.TeammateIdle)
+	addEvent("TaskCompleted", hooks.TaskCompleted)
 	addEvent("PreCompact", hooks.PreCompact)
 
 	return result
+}
+
+func (r *PluginResource) validateMcpServers(ctx context.Context, servers []PluginMcpModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	for _, s := range servers {
+		name := s.Name.ValueString()
+		hasCommand := hasNonEmptyString(s.Command)
+		hasURL := hasNonEmptyString(s.URL)
+
+		if hasCommand == hasURL {
+			diags.AddError(
+				"Invalid MCP Server Configuration",
+				fmt.Sprintf("MCP server %q must set exactly one of command or url.", name),
+			)
+			continue
+		}
+
+		if hasURL {
+			hasArgs := !s.Args.IsNull() && !s.Args.IsUnknown()
+			hasEnv := !s.Env.IsNull() && !s.Env.IsUnknown()
+			hasCwd := hasNonEmptyString(s.Cwd)
+
+			if hasArgs || hasEnv || hasCwd {
+				diags.AddError(
+					"Invalid MCP Server Configuration",
+					fmt.Sprintf("MCP server %q uses url transport and cannot set args, env, or cwd.", name),
+				)
+			}
+			continue
+		}
+
+		if !s.Args.IsNull() && !s.Args.IsUnknown() {
+			var args []string
+			d := s.Args.ElementsAs(ctx, &args, false)
+			diags.Append(d...)
+			if diags.HasError() {
+				continue
+			}
+		}
+
+		if !s.Env.IsNull() && !s.Env.IsUnknown() {
+			env := make(map[string]string)
+			d := s.Env.ElementsAs(ctx, &env, false)
+			diags.Append(d...)
+			if diags.HasError() {
+				continue
+			}
+		}
+	}
+
+	return diags
 }
 
 // buildMcpJSON converts PluginMcpModel entries into an ordered map for .mcp.json.
@@ -996,6 +1145,15 @@ func (r *PluginResource) buildLspJSON(ctx context.Context, servers []PluginLspMo
 		}
 		entry["extensionToLanguage"] = extMap
 
+		if !s.WorkspaceFolder.IsNull() && !s.WorkspaceFolder.IsUnknown() {
+			entry["workspaceFolder"] = s.WorkspaceFolder.ValueString()
+		}
+		if !s.StartupTimeout.IsNull() && !s.StartupTimeout.IsUnknown() {
+			entry["startupTimeout"] = s.StartupTimeout.ValueInt64()
+		}
+		if !s.ShutdownTimeout.IsNull() && !s.ShutdownTimeout.IsUnknown() {
+			entry["shutdownTimeout"] = s.ShutdownTimeout.ValueInt64()
+		}
 		if s.RestartOnCrash.ValueBool() {
 			entry["restartOnCrash"] = true
 		}
@@ -1103,6 +1261,27 @@ func copyFile(src, dst string) diag.Diagnostics {
 	return diags
 }
 
+func cleanupManagedArtifacts(root string) error {
+	managedPaths := []string{
+		".claude-plugin",
+		"skills",
+		"agents",
+		"commands",
+		"hooks",
+		".mcp.json",
+		".lsp.json",
+	}
+
+	for _, p := range managedPaths {
+		target := filepath.Join(root, p)
+		if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %q: %w", target, err)
+		}
+	}
+
+	return nil
+}
+
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
@@ -1124,4 +1303,16 @@ func marshalDeterministic(v interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+func hasNonEmptyString(v types.String) bool {
+	return !v.IsNull() && !v.IsUnknown() && strings.TrimSpace(v.ValueString()) != ""
+}
+
+func withDotSlash(path string) string {
+	normalized := filepath.ToSlash(path)
+	if strings.HasPrefix(normalized, "./") {
+		return normalized
+	}
+	return "./" + normalized
 }
