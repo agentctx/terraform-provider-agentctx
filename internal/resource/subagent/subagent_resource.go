@@ -227,6 +227,9 @@ func hookMatcherBlockSchema(description string) schema.ListNestedBlock {
 							"type": schema.StringAttribute{
 								MarkdownDescription: "Hook type. Currently only `command` is supported.",
 								Required:            true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("command"),
+								},
 							},
 							"command": schema.StringAttribute{
 								MarkdownDescription: "Shell command to execute.",

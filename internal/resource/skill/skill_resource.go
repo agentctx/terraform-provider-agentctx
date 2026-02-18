@@ -9,13 +9,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/agentctx/terraform-provider-agentctx/internal/anthropic"
@@ -412,6 +412,7 @@ func (r *SkillResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// 6. Deploy to each target.
 	targetStates := make(map[string]attr.Value, len(resolvedTargets))
 	var firstDeployID string
+	deployIDByTarget := make(map[string]string, len(resolvedTargets))
 
 	for _, tName := range resolvedTargets {
 		t, ok := r.providerData.Targets[tName]
@@ -448,6 +449,7 @@ func (r *SkillResource) Create(ctx context.Context, req resource.CreateRequest, 
 		if firstDeployID == "" {
 			firstDeployID = result.DeploymentID
 		}
+		deployIDByTarget[tName] = result.DeploymentID
 
 		managedIDs, idDiags := types.ListValueFrom(ctx, types.StringType, []string{result.DeploymentID})
 		resp.Diagnostics.Append(idDiags...)
@@ -489,7 +491,8 @@ func (r *SkillResource) Create(ctx context.Context, req resource.CreateRequest, 
 		retain := int(plan.RetainDeployments.ValueInt64())
 		for _, tName := range resolvedTargets {
 			t := r.providerData.Targets[tName]
-			_, pruneErr := eng.Prune(ctx, t, skillName, firstDeployID, []string{firstDeployID}, retain)
+			activeDeployID := deployIDByTarget[tName]
+			_, pruneErr := eng.Prune(ctx, t, skillName, activeDeployID, []string{activeDeployID}, retain)
 			if pruneErr != nil {
 				tflog.Warn(ctx, "prune failed", map[string]interface{}{
 					"target": tName,
@@ -652,6 +655,8 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	plan.SkillName = types.StringValue(skillName)
 	plan.SourceHash = types.StringValue(b.BundleHash)
 	plan.BundleHash = types.StringValue(b.BundleHash)
+	priorSkillName := priorState.SkillName.ValueString()
+	cleanupPriorSkill := priorSkillName != "" && priorSkillName != skillName
 
 	// 4. Detect whether the bundle actually changed.
 	bundleChanged := priorState.BundleHash.ValueString() != b.BundleHash
@@ -751,6 +756,8 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	// 6. Re-deploy to each target.
 	targetStates := make(map[string]attr.Value, len(resolvedTargets))
 	var firstDeployID string
+	deployIDByTarget := make(map[string]string, len(resolvedTargets))
+	managedIDsByTarget := make(map[string][]string, len(resolvedTargets))
 
 	// Read prior target states for previous deploy IDs.
 	priorTargetStates := make(map[string]TargetStateValue)
@@ -770,6 +777,65 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		}
 	}
 
+	resolvedTargetSet := make(map[string]struct{}, len(resolvedTargets))
+	for _, tName := range resolvedTargets {
+		resolvedTargetSet[tName] = struct{}{}
+	}
+
+	// Clean up targets no longer managed by this resource, and clean up the
+	// previous skill name if source_dir changed across an update.
+	for tName, pts := range priorTargetStates {
+		_, stillManaged := resolvedTargetSet[tName]
+		if stillManaged && !cleanupPriorSkill {
+			continue
+		}
+
+		t, ok := r.providerData.Targets[tName]
+		if !ok {
+			tflog.Warn(ctx, "target no longer configured, skipping cleanup", map[string]interface{}{
+				"target": tName,
+			})
+			continue
+		}
+
+		var managedIDs []string
+		resp.Diagnostics.Append(pts.ManagedDeployIDs.ElementsAs(ctx, &managedIDs, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		destroySkillName := priorSkillName
+		if destroySkillName == "" {
+			destroySkillName = skillName
+		}
+		if cleanupPriorSkill && stillManaged {
+			tflog.Info(ctx, "cleaning up previous skill name on target", map[string]interface{}{
+				"target":     tName,
+				"skill_name": destroySkillName,
+				"new_skill":  skillName,
+			})
+		} else if !stillManaged {
+			tflog.Info(ctx, "cleaning up removed target", map[string]interface{}{
+				"target":     tName,
+				"skill_name": destroySkillName,
+			})
+		}
+
+		destroyErr := eng.Destroy(ctx, t, destroySkillName, engine.DestroyOptions{
+			ForceDestroy:             plan.ForceDestroy.ValueBool(),
+			ForceDestroySharedPrefix: plan.ForceDestroySharedPrefix.ValueBool(),
+			ManagedDeployIDs:         managedIDs,
+			ActiveDeployID:           pts.ActiveDeploymentID.ValueString(),
+		})
+		if destroyErr != nil {
+			resp.Diagnostics.AddError(
+				"Cleanup Failed",
+				fmt.Sprintf("Failed to clean up skill %q from target %q: %s", destroySkillName, tName, destroyErr),
+			)
+			return
+		}
+	}
+
 	for _, tName := range resolvedTargets {
 		t, ok := r.providerData.Targets[tName]
 		if !ok {
@@ -782,8 +848,10 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 		// Determine previous deploy ID for conditional writes.
 		var prevDeployID string
-		if pts, exists := priorTargetStates[tName]; exists {
-			prevDeployID = pts.ActiveDeploymentID.ValueString()
+		if !cleanupPriorSkill {
+			if pts, exists := priorTargetStates[tName]; exists {
+				prevDeployID = pts.ActiveDeploymentID.ValueString()
+			}
 		}
 
 		tflog.Info(ctx, "updating skill on target", map[string]interface{}{
@@ -812,16 +880,20 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		if firstDeployID == "" {
 			firstDeployID = result.DeploymentID
 		}
+		deployIDByTarget[tName] = result.DeploymentID
 
 		// Merge managed deploy IDs.
 		var managedIDs []string
-		if pts, exists := priorTargetStates[tName]; exists {
-			resp.Diagnostics.Append(pts.ManagedDeployIDs.ElementsAs(ctx, &managedIDs, false)...)
-			if resp.Diagnostics.HasError() {
-				return
+		if !cleanupPriorSkill {
+			if pts, exists := priorTargetStates[tName]; exists {
+				resp.Diagnostics.Append(pts.ManagedDeployIDs.ElementsAs(ctx, &managedIDs, false)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
 			}
 		}
 		managedIDs = appendUnique(managedIDs, result.DeploymentID)
+		managedIDsByTarget[tName] = managedIDs
 
 		managedIDsList, idDiags := types.ListValueFrom(ctx, types.StringType, managedIDs)
 		resp.Diagnostics.Append(idDiags...)
@@ -863,18 +935,9 @@ func (r *SkillResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		retain := int(plan.RetainDeployments.ValueInt64())
 		for _, tName := range resolvedTargets {
 			t := r.providerData.Targets[tName]
-
-			// Collect all managed IDs for this target.
-			var allManagedIDs []string
-			if pts, exists := priorTargetStates[tName]; exists {
-				resp.Diagnostics.Append(pts.ManagedDeployIDs.ElementsAs(ctx, &allManagedIDs, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-			}
-			allManagedIDs = appendUnique(allManagedIDs, firstDeployID)
-
-			_, pruneErr := eng.Prune(ctx, t, skillName, firstDeployID, allManagedIDs, retain)
+			activeDeployID := deployIDByTarget[tName]
+			managedIDs := managedIDsByTarget[tName]
+			_, pruneErr := eng.Prune(ctx, t, skillName, activeDeployID, managedIDs, retain)
 			if pruneErr != nil {
 				tflog.Warn(ctx, "prune failed", map[string]interface{}{
 					"target": tName,
@@ -1012,7 +1075,7 @@ func (r *SkillResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 					})
 				} else if len(remaining) > 0 {
 					tflog.Warn(ctx, "skill has versions not managed by Terraform, skipping skill deletion", map[string]interface{}{
-						"skill_id":         skillID,
+						"skill_id":           skillID,
 						"remaining_versions": len(remaining),
 					})
 				} else {

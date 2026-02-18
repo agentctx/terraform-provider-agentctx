@@ -28,7 +28,13 @@ fmt:
 
 lint: vet fmt
 
+release:
+	@if [ -z "$(V)" ]; then echo "Usage: make release V=0.2.0"; exit 1; fi
+	@git diff --quiet || (echo "Error: working tree is dirty" && exit 1)
+	git tag v$(V)
+	git push origin v$(V)
+
 clean:
 	rm -f ${BINARY}
 
-.PHONY: build install test testacc vet fmt lint clean
+.PHONY: build install test testacc vet fmt lint release clean
