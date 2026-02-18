@@ -1,6 +1,12 @@
 # Terraform Provider agentctx
 
-Deploy AI skill bundles to cloud storage with versioning, drift detection, and optional [Anthropic](https://www.anthropic.com/) registry integration.
+Manage Claude Code context artifacts with Terraform:
+
+- deploy AI skill bundles to cloud storage with versioning and drift detection
+- generate local Claude Code sub-agents
+- generate local Claude Code plugins
+
+Includes optional [Anthropic](https://www.anthropic.com/) registry integration for skills.
 
 > [Registry](https://registry.terraform.io/providers/agentctx/agentctx/latest) | [Documentation](https://registry.terraform.io/providers/agentctx/agentctx/latest/docs)
 
@@ -55,6 +61,10 @@ This will:
 3. Create a new version automatically whenever the skill content changes
 
 ## Examples
+
+- [`agentctx_skill` examples](examples/resources/agentctx_skill/resource.tf)
+- [`agentctx_subagent` examples](examples/resources/agentctx_subagent/resource.tf)
+- [`agentctx_plugin` examples](examples/resources/agentctx_plugin/resource.tf)
 
 ### Multi-cloud replication
 

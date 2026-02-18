@@ -2,12 +2,16 @@
 page_title: "agentctx Provider"
 subcategory: ""
 description: |-
-  The agentctx provider manages agent context skills and their versions across one or more cloud storage targets (S3, Azure Blob Storage, GCS), with optional Anthropic registry integration.
+  The agentctx provider manages Claude Code context artifacts: skills (with optional Anthropic registry integration), sub-agents, and plugins.
 ---
 
 # agentctx Provider
 
-The agentctx provider manages agent context skills and their versions across one or more cloud storage targets. It supports deploying skill bundles to **Amazon S3**, **Azure Blob Storage**, and **Google Cloud Storage**, with optional integration with the **Anthropic Skills API** for registry-based versioning.
+The agentctx provider manages Claude Code context artifacts:
+
+- **Skills** deployed to cloud storage targets (**Amazon S3**, **Azure Blob Storage**, **Google Cloud Storage**) with optional **Anthropic Skills API** integration.
+- **Sub-agents** rendered as local Markdown files following Claude Code sub-agent format.
+- **Plugins** rendered as local plugin directory structures (`plugin.json`, hooks, agents, skills, MCP/LSP config, and bundled files).
 
 Key capabilities:
 
@@ -17,6 +21,15 @@ Key capabilities:
 - **Drift detection** -- refresh operations detect and surface out-of-band changes.
 - **Deployment pruning** -- automatic cleanup of old deployments with configurable retention.
 - **Anthropic registry** -- optional skill registration and versioning through the Anthropic Skills API.
+- **Sub-agent generation** -- produce local Claude Code sub-agent definitions with hooks and MCP configuration.
+- **Plugin generation** -- produce local Claude Code plugin bundles with manifest, hooks, MCP/LSP, and packaged artifacts.
+
+## Resource Docs
+
+- [agentctx_skill](./resources/skill.md)
+- [agentctx_skill_version](./resources/skill_version.md)
+- [agentctx_subagent](./resources/subagent.md)
+- [agentctx_plugin](./resources/plugin.md)
 
 ## Example Usage
 

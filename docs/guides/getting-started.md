@@ -197,5 +197,7 @@ This removes all managed deployments and the ACTIVE pointer from the storage tar
 - **Multi-target deployment** -- Add multiple `target` blocks and use `default_targets` or per-resource `targets` to replicate skills across regions or cloud providers. See the [provider documentation](../index.md).
 - **Anthropic integration** -- Add an `anthropic` block to the provider and enable registry integration on your skill resources. See the [agentctx_skill resource](../resources/skill.md).
 - **Explicit versioning** -- Use the [agentctx_skill_version resource](../resources/skill_version.md) for pinned version workflows.
+- **Sub-agents** -- Generate Claude Code sub-agent files with hooks and MCP config using [agentctx_subagent](../resources/subagent.md).
+- **Plugins** -- Generate Claude Code plugin bundles using [agentctx_plugin](../resources/plugin.md).
 - **Validate-only mode** -- Set `validate_only = true` on a skill resource to validate bundles in CI without deploying.
 - **Import existing deployments** -- Use `terraform import` with skill IDs or target deployment IDs. See the [import section](../resources/skill.md#import) of the skill resource documentation.
