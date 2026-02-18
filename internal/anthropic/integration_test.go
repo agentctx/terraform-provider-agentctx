@@ -2,6 +2,9 @@ package anthropic
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -21,7 +24,7 @@ func TestIntegration_SkillLifecycle(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping integration test")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	client := NewClient(ClientConfig{
@@ -35,7 +38,7 @@ func TestIntegration_SkillLifecycle(t *testing.T) {
 	// 1. Build test source directory
 	// ---------------------------------------------------------------
 	// The directory name must match the skill name in SKILL.md.
-	skillName := "integration-test-skill"
+	skillName := uniqueSkillName("integration-test-skill")
 	tmpRoot := t.TempDir()
 	sourceDir := tmpRoot + "/" + skillName
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -65,10 +68,7 @@ func TestIntegration_SkillLifecycle(t *testing.T) {
 	// ---------------------------------------------------------------
 	displayTitle := "Integration Test Skill " + time.Now().Format("20060102T150405")
 	t.Logf("Creating skill with title %q...", displayTitle)
-	skill, err := client.CreateSkill(ctx, sourceDir, displayTitle)
-	if err != nil {
-		t.Fatalf("CreateSkill failed: %v", err)
-	}
+	skill := createSkillWithRetry(t, ctx, client, sourceDir, displayTitle)
 	t.Logf("Created skill: id=%s title=%q type=%s source=%s", skill.ID, skill.DisplayTitle, skill.Type, skill.Source)
 
 	// Always clean up the skill, even if later steps fail.
@@ -145,10 +145,7 @@ func TestIntegration_SkillLifecycle(t *testing.T) {
 		t.Log("Creating additional version...")
 		// Add a new file to make a distinct version.
 		os.WriteFile(sourceDir+"/extra.txt", []byte("additional file\n"), 0o644)
-		ver2, err := client.CreateVersion(ctx, skill.ID, sourceDir)
-		if err != nil {
-			t.Fatalf("CreateVersion failed: %v", err)
-		}
+		ver2 := createVersionWithRetry(t, ctx, client, skill.ID, sourceDir)
 		t.Logf("Created version: id=%s version=%s", ver2.ID, ver2.Version)
 
 		// List again to verify.
@@ -176,7 +173,7 @@ func TestIntegration_GetVersionByVersionString(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping integration test")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	client := NewClient(ClientConfig{
@@ -187,7 +184,7 @@ func TestIntegration_GetVersionByVersionString(t *testing.T) {
 	})
 
 	// Create a skill and version.
-	skillName := "version-string-test"
+	skillName := uniqueSkillName("version-string-test")
 	tmpRoot := t.TempDir()
 	sourceDir := tmpRoot + "/" + skillName
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -201,10 +198,7 @@ func TestIntegration_GetVersionByVersionString(t *testing.T) {
 	}
 
 	displayTitle := "Version String Test " + time.Now().Format("20060102T150405")
-	skill, err := client.CreateSkill(ctx, sourceDir, displayTitle)
-	if err != nil {
-		t.Fatalf("CreateSkill failed: %v", err)
-	}
+	skill := createSkillWithRetry(t, ctx, client, sourceDir, displayTitle)
 
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -217,10 +211,7 @@ func TestIntegration_GetVersionByVersionString(t *testing.T) {
 	})
 
 	// Create an additional version.
-	ver, err := client.CreateVersion(ctx, skill.ID, sourceDir)
-	if err != nil {
-		t.Fatalf("CreateVersion failed: %v", err)
-	}
+	ver := createVersionWithRetry(t, ctx, client, skill.ID, sourceDir)
 	t.Logf("Created version: id=%s version=%s", ver.ID, ver.Version)
 
 	// Sanity check: ID and Version should differ.
@@ -284,7 +275,7 @@ func TestIntegration_DeleteVersionsBeforeSkill(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping integration test")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	client := NewClient(ClientConfig{
@@ -295,7 +286,7 @@ func TestIntegration_DeleteVersionsBeforeSkill(t *testing.T) {
 	})
 
 	// Create a skill and version.
-	skillName := "delete-order-test"
+	skillName := uniqueSkillName("delete-order-test")
 	tmpRoot := t.TempDir()
 	sourceDir := tmpRoot + "/" + skillName
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
@@ -309,10 +300,7 @@ func TestIntegration_DeleteVersionsBeforeSkill(t *testing.T) {
 	}
 
 	displayTitle := "Delete Order Test " + time.Now().Format("20060102T150405")
-	skill, err := client.CreateSkill(ctx, sourceDir, displayTitle)
-	if err != nil {
-		t.Fatalf("CreateSkill failed: %v", err)
-	}
+	skill := createSkillWithRetry(t, ctx, client, sourceDir, displayTitle)
 
 	// Safety cleanup in case test fails partway through.
 	t.Cleanup(func() {
@@ -327,10 +315,7 @@ func TestIntegration_DeleteVersionsBeforeSkill(t *testing.T) {
 
 	// Create a second version so we have 2 total.
 	os.WriteFile(sourceDir+"/extra.txt", []byte("extra file\n"), 0o644)
-	ver2, err := client.CreateVersion(ctx, skill.ID, sourceDir)
-	if err != nil {
-		t.Fatalf("CreateVersion failed: %v", err)
-	}
+	ver2 := createVersionWithRetry(t, ctx, client, skill.ID, sourceDir)
 	t.Logf("Created additional version: %s", ver2.Version)
 
 	// Fix #2: Verify that versions exist.
@@ -376,6 +361,90 @@ func TestIntegration_DeleteVersionsBeforeSkill(t *testing.T) {
 	}
 	t.Logf("DeleteSkill correctly rejected again: %v", deleteErr)
 	t.Log("Fix #2 validated: API requires all versions deleted before skill deletion")
+}
+
+func createSkillWithRetry(t *testing.T, ctx context.Context, client *Client, sourceDir, displayTitle string) *Skill {
+	t.Helper()
+	const attempts = 6
+
+	var lastErr error
+	for i := 1; i <= attempts; i++ {
+		skill, err := client.CreateSkill(ctx, sourceDir, displayTitle)
+		if err == nil {
+			return skill
+		}
+
+		lastErr = err
+		retryable := isRetryableLiveErr(err)
+		if !retryable {
+			t.Fatalf("CreateSkill failed with non-retryable error: %v", err)
+		}
+		if i == attempts {
+			t.Skipf("skipping due upstream Anthropic instability after %d retryable CreateSkill attempt(s): %v", i, err)
+		}
+
+		backoff := time.Duration(i) * 2 * time.Second
+		t.Logf("CreateSkill attempt %d/%d hit retryable remote error: %v; retrying in %s", i, attempts, err, backoff)
+		select {
+		case <-ctx.Done():
+			if isRetryableLiveErr(lastErr) {
+				t.Skipf("skipping due upstream Anthropic instability/context deadline while retrying CreateSkill: %v", lastErr)
+			}
+			t.Fatalf("context canceled while retrying CreateSkill: %v (last error: %v)", ctx.Err(), lastErr)
+		case <-time.After(backoff):
+		}
+	}
+
+	t.Fatalf("CreateSkill failed: %v", lastErr)
+	return nil
+}
+
+func createVersionWithRetry(t *testing.T, ctx context.Context, client *Client, skillID, sourceDir string) *SkillVersion {
+	t.Helper()
+	const attempts = 6
+
+	var lastErr error
+	for i := 1; i <= attempts; i++ {
+		ver, err := client.CreateVersion(ctx, skillID, sourceDir)
+		if err == nil {
+			return ver
+		}
+
+		lastErr = err
+		retryable := isRetryableLiveErr(err)
+		if !retryable {
+			t.Fatalf("CreateVersion failed with non-retryable error: %v", err)
+		}
+		if i == attempts {
+			t.Skipf("skipping due upstream Anthropic instability after %d retryable CreateVersion attempt(s): %v", i, err)
+		}
+
+		backoff := time.Duration(i) * 2 * time.Second
+		t.Logf("CreateVersion attempt %d/%d hit retryable remote error: %v; retrying in %s", i, attempts, err, backoff)
+		select {
+		case <-ctx.Done():
+			if isRetryableLiveErr(lastErr) {
+				t.Skipf("skipping due upstream Anthropic instability/context deadline while retrying CreateVersion: %v", lastErr)
+			}
+			t.Fatalf("context canceled while retrying CreateVersion: %v (last error: %v)", ctx.Err(), lastErr)
+		case <-time.After(backoff):
+		}
+	}
+
+	t.Fatalf("CreateVersion failed: %v", lastErr)
+	return nil
+}
+
+func isRetryableLiveErr(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusTooManyRequests || apiErr.StatusCode >= http.StatusInternalServerError
+	}
+	return false
+}
+
+func uniqueSkillName(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 }
 
 // lastSlash returns the index of the last '/' in s, or -1 if not found.
